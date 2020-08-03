@@ -235,7 +235,6 @@ if __name__ == '__main__':
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
-    ttr = []
     for epoch in range(start_epoch, args.epochs):
         model.train()
         end = time.time()
@@ -313,8 +312,6 @@ if __name__ == '__main__':
               'Average Loss {loss:.3f}\t'.format(epoch + 1, epoch_time=epoch_time, loss=avg_loss))
 
         start_iter = 0  # Reset start iteration for next epoch
-        with open('/home/hemant/save.json', "w") as f:
-            f.write(json.dumps(ttr))
         with torch.no_grad():
             wer, cer, output_data = evaluate(test_loader=test_loader,
                                              device=device,
