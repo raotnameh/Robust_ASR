@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Record Audio</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Latest compiled and minified Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <link rel="stylesheet" href="./css/styling.css">  
+  </head>
+  <body>
+    <div class="heading">
+      <h1>Record Audio</h1>
+    </div>
+    <div id = "Details">Steps to record an audio and get a prediction on the spoken text-
+    <br> 1. Click on Record to record an audio.
+    <br> 2. Click on Pause if you want to pause the recording. Click on Record again to continue recording.
+    <br> 3. Click on Stop recording.
+    <br> 4. Add all the details and click on upload to get the prediction on spoken text.</div>
+    <div id="controls" class= "controls">
+  	 <button id="recordButton" enabled>Record</button>
+  	 <button id="pauseButton" disabled>Pause</button>
+  	 <button id="stopButton" disabled>Stop</button>
+    </div>
+  	<p><strong>Recordings:</strong></p>
+  	<ol id="recordingsList">
+    <!-- <ul style= "list-style-type: none" id="detailList"></ul>
+    <ul style= "list-style-type: none" id="textList"></ul> -->
+    </ol>
+    <script src="https://cdn.rawgit.com/mattdiamond/Recorderjs/08e7abd9/dist/recorder.js"></script>
+    <script type="text/javascript" src="http://code.jquery.com/jquery-1.7.1.min.js"></script>
+    <script src = "./js/aud.js"></script>
+  </body>
+</html>

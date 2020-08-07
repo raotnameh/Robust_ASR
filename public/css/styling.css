@@ -1,0 +1,50 @@
+.heading{
+    text-align: center;
+    left: 45%;
+    font-size: 5px;
+}
+.controls{
+    width: 800px;
+    margin-left: 35%;
+    justify-content: center;
+}
+button{
+    margin: 20px;
+    left: 50%;
+    text-align: center;
+}
+audio{
+    height: 25px;
+    font-size: small;
+    margin-right: 20px;
+}
+li> *{
+    margin-left: 30px;
+}
+ol>*{
+    margin: 20px;
+}
+#predicted, #spoken{
+    width: 300px;
+    height: 25px;
+}
+#age{
+    height: 20px;
+    width: 140px;
+}
+#gender{
+    margin-left: 30px;
+    width: 130px;
+    height: 20px;
+}
+#country{
+    width: 300px;
+    height: 20px;
+}
+#Details{
+
+    margin-left: 25%;
+    margin-top: 20px;
+    
+    /* width: ; */
+}

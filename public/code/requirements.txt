@@ -1,0 +1,7 @@
+python-levenshtein
+visdom
+wget
+librosa
+tqdm
+matplotlib
+flask

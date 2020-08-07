@@ -1,0 +1,36 @@
+{
+  "name": "audiorecordjs",
+  "version": "1.0.0",
+  "description": "Recording audio through the recorder js plugin.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon index"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xrachitx/audioRecordJS.git"
+  },
+  "author": "Rachit Mittal",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/xrachitx/audioRecordJS/issues"
+  },
+  "homepage": "https://github.com/xrachitx/audioRecordJS#readme",
+  "dependencies": {
+    "axios": "^0.19.2",
+    "body-parser": "^1.19.0",
+    "child_process": "^1.0.2",
+    "express": "^4.17.1",
+    "http": "0.0.1-security",
+    "https": "^1.0.0",
+    "multer": "^1.4.2",
+    "nodemon": "^2.0.4",
+    "request": "^2.88.2"
+  },
+  "nodemonConfig": {
+    "ignore": [
+      "public/uploads/metadata.json"
+    ]
+  }
+}
