@@ -1,2 +1,3 @@
-# Robust_ASR
-Do not push anything to master. Create branches.
+#### delete anything you do not want in the corresponding scripts
+
+
