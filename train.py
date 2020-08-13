@@ -70,9 +70,11 @@ if __name__ == '__main__':
     best_wer = None
     avg_loss, start_epoch = 0, 0
     
+    #Loading the labels
     with open(args.labels_path) as label_file:
             labels = str(''.join(json.load(label_file)))
 
+    #Creating the configuration apply to the audio
     audio_conf = dict(sample_rate=args.sample_rate,
                         window_size=args.window_size,
                         window_stride=args.window_stride,
@@ -81,6 +83,8 @@ if __name__ == '__main__':
                         noise_prob=args.noise_prob,
                         noise_levels=(args.noise_min, args.noise_max))
     
+
+    #Creating the ASR model block
     rnn_type = args.rnn_type.lower()
     assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
     asr = DeepSpeech(rnn_hidden_size=args.hidden_size,
@@ -89,8 +93,11 @@ if __name__ == '__main__':
                         rnn_type=supported_rnns[rnn_type],
                         audio_conf=audio_conf,
                         bidirectional=args.bidirectional)
+    asr = asr.to(device)
+    #Decoder used for evaluation
     decoder = GreedyDecoder(labels)
 
+    #Try loading the information from the last checkpoint
     try:
         package = torch.load(args.weights)
         asr.load_state_dict(package['state_dict'], strict = True)
@@ -99,6 +106,7 @@ if __name__ == '__main__':
     except:pass
 
     
+    #Creating the dataset
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
                                        spec_augment=args.spec_augment)
@@ -118,7 +126,6 @@ if __name__ == '__main__':
 
     
     #Different modules used with parameters, optimizer and, loss.
-    asr = asr.to(device)
     asr_parameters = asr.parameters()
     asr_optimizer = torch.optim.Adam(asr_parameters, lr=args.lr,weight_decay=1e-4,amsgrad=True)
     criterion = CTCLoss()
