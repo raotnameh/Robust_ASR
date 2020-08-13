@@ -58,17 +58,17 @@ if __name__ == '__main__':
     np.random.seed(args.seed)
     random.seed(args.seed)
 
+    #Gpu setting
     device = torch.device("cuda:"+str(args.gpu_rank) if args.cuda else "cpu")
     torch.cuda.set_device(int(args.gpu_rank))
     
+    #Where to save the models
     save_folder = args.save_folder
     os.makedirs(save_folder, exist_ok=True)  # Ensure save folder exists
 
-    loss_results, cer_results, wer_results = torch.Tensor(args.epochs), torch.Tensor(args.epochs), torch.Tensor(
-        args.epochs)
+    wer_results = torch.Tensor(args.epochs)
     best_wer = None
-    
-    avg_loss, start_epoch, start_iter, optim_state = 0, 0, 0, None
+    avg_loss, start_epoch = 0, 0
     
     with open(args.labels_path) as label_file:
             labels = str(''.join(json.load(label_file)))
@@ -131,7 +131,7 @@ if __name__ == '__main__':
         asr.train()
         start_epoch_time = time.time()
 
-        for i, (data) in enumerate(train_loader, start=start_iter):
+        for i, (data) in enumerate(train_loader):
             if i == len(train_sampler):
                 break
             
@@ -181,8 +181,6 @@ if __name__ == '__main__':
               'Average Loss {2}\t'.format(epoch + 1, epoch_time, avg_loss))
         avg_loss = 0
 
-        start_iter = 0  # Reset start iteration for next epoch
-        
         with torch.no_grad():
             wer, cer, output_data = evaluate(test_loader=test_loader,
                                              device=device,
@@ -205,7 +203,7 @@ if __name__ == '__main__':
         
         # anneal lr
         for g in asr_optimizer.param_groups:
-            g['lr'] = g['lr'] / ar_results, cer_results=cer_resultsgs.learning_anneal
+            g['lr'] = g['lr'] / args.learning_anneal
         print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
         if best_wer is None or best_wer > wer:
