@@ -31,6 +31,11 @@ def load_audio(path):
     sound = 2*((sound - sound.min()) / (sound.max() - sound.min())) - 1
     return sound
 
+def merge_audio(audio_list):
+    merged_audio = []
+    for audio in audio_list:
+        merged_audio += audio
+    return merged_audio
 
 
 class AudioParser(object):
@@ -105,11 +110,18 @@ class SpectrogramParser(AudioParser):
             'noise_dir') is not None else None
         self.noise_prob = audio_conf.get('noise_prob')
 
-    def parse_audio(self, audio_path):
-        if self.speed_volume_perturb:
-            y = load_randomly_augmented_audio(audio_path, self.sample_rate)
-        else:
-            y = load_audio(audio_path)
+    def parse_audio(self, audio_path_list):
+        audio_list = []
+        time_dur = []
+        for audio_path in audio_path_list:
+            if self.speed_volume_perturb:
+                y = load_randomly_augmented_audio(audio_path, self.sample_rate)
+            else:
+                y = load_audio(audio_path)
+            audio_list.append(y)
+            time_dur.append(len(y))
+        y = merge_audio(audio_list)
+        total_dur = sum(time_dur)
         if self.noiseInjector:
             add_noise = np.random.binomial(1, self.noise_prob)
             if add_noise:
@@ -120,6 +132,8 @@ class SpectrogramParser(AudioParser):
         # STFT
         D = librosa.stft(y, n_fft=n_fft, hop_length=hop_length,
                          win_length=win_length, window=self.window)
+        time_conv_ratio = D.shape[1]/total_dur
+        time_dur = [int(i*time_conv_ratio) for i in time_dur] #Calculating duration in spectogram timesteps
         spect, phase = librosa.magphase(D)
         # S = log(S+1)
         spect = np.log1p(spect)
@@ -133,7 +147,7 @@ class SpectrogramParser(AudioParser):
         if self.spec_augment:
             spect = spec_augment(spect)
 
-        return spect
+        return spect,time_dur
 
     def parse_transcript(self, transcript_path):
         raise NotImplementedError
@@ -160,21 +174,20 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         ids = [x.strip().split(',') for x in ids]
         self.ids = ids
         self.size = len(ids)
-        self.labels_map = dict([(labels[i], i) for i in range(len(labels))])
         super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment)
 
     def __getitem__(self, index):
         sample = self.ids[index]
-        audio_path, transcript_path = sample[0], sample[1]
-        spect = self.parse_audio(audio_path)
-        transcript = self.parse_transcript(transcript_path)
-        return spect, transcript
-
-    def parse_transcript(self, transcript_path):
-        with open(transcript_path, 'r', encoding='utf8') as transcript_file:
-            transcript = transcript_file.read().replace('\n', '')
-        transcript = list(filter(None, [self.labels_map.get(x) for x in list(transcript)]))
-        return transcript
+        audio_path_list, labels = sample[0].split('|'), sample[1].split('|')
+        spect,time_dur = self.parse_audio(audio_path_list)
+        labels = self.parse_label(time_dur,labels)
+        return spect, labels
+    
+    def parse_label(self,time_dur,labels):
+        labs = []
+        for i,label in enumerate(labels):
+            labs+=[label]*time_dur[i]
+        return labs
 
     def __len__(self):
         return self.size
