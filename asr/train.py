@@ -4,6 +4,7 @@ import os
 import random
 import time, math
 
+import torch.nn as nn
 import numpy as np
 import torch.distributed as dist
 import torch.utils.data.distributed
@@ -168,7 +169,7 @@ if __name__ == '__main__':
                 tensorboard_logger.load_previous_values(start_epoch, package)
     else:
         with open(args.labels_path) as label_file:
-            labels = str(''.join(json.load(label_file)))
+            labels = json.load(label_file)
 
         audio_conf = dict(sample_rate=args.sample_rate,
                           window_size=args.window_size,
@@ -231,7 +232,7 @@ if __name__ == '__main__':
     print(model)
     print("Number of parameters: %d" % DeepSpeech.get_param_size(model))
 
-    criterion = CTCLoss()
+    criterion = nn.NLLLoss() #CTCLoss()
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -252,8 +253,10 @@ if __name__ == '__main__':
             out, output_sizes = model(inputs, input_sizes)
             out = out.transpose(0, 1)  # TxNxH
 
+            print(out.size())
+            print(targets.size())
             float_out = out.float()  # ensure float32 for loss
-            loss = criterion(float_out, targets, output_sizes, target_sizes).to(device)
+            loss = criterion(float_out, targets) # output_sizes, target_sizes).to(device)
             loss = loss / inputs.size(0)  # average the loss by minibatch
             
             if math.isnan(loss.item()):

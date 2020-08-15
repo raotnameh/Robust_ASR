@@ -134,6 +134,8 @@ class SpectrogramParser(AudioParser):
                          win_length=win_length, window=self.window)
         time_conv_ratio = D.shape[1]/total_dur
         time_dur = [int(i*time_conv_ratio) for i in time_dur] #Calculating duration in spectogram timesteps
+        if sum(time_dur) != D.shape[1]:
+            time_dur[-1] += D.shape[-1] - sum(time_dur)
         spect, phase = librosa.magphase(D)
         # S = log(S+1)
         spect = np.log1p(spect)
@@ -172,6 +174,8 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         with open(manifest_filepath) as f:
             ids = f.readlines()
         ids = [x.strip().split(',') for x in ids]
+        self.labels_map = dict([(labels[i], i) for i in range(len(labels))])
+        print(self.labels_map)
         self.ids = ids
         self.size = len(ids)
         super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment)
@@ -180,13 +184,17 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         sample = self.ids[index]
         audio_path_list, labels = sample[0].split('|'), sample[1].split('|')
         spect,time_dur = self.parse_audio(audio_path_list)
+        #print("time_dur",sum(time_dur),spect.shape[1])
         labels = self.parse_label(time_dur,labels)
         return spect, labels
     
     def parse_label(self,time_dur,labels):
         labs = []
+        #print("time_dur",time_dur)
+        #print("labels",labels)
         for i,label in enumerate(labels):
-            labs+=[label]*time_dur[i]
+            labs+=[self.labels_map[label]]*time_dur[i]
+        #print("labs",labs)
         return labs
 
     def __len__(self):
@@ -202,6 +210,7 @@ def _collate_fn(batch):
     freq_size = longest_sample.size(0)
     minibatch_size = len(batch)
     max_seqlength = longest_sample.size(1)
+    #print("max_seqlength",max_seqlength)
     inputs = torch.zeros(minibatch_size, 1, freq_size, max_seqlength)
     input_percentages = torch.FloatTensor(minibatch_size)
     target_sizes = torch.IntTensor(minibatch_size)
@@ -214,7 +223,7 @@ def _collate_fn(batch):
         inputs[x][0].narrow(1, 0, seq_length).copy_(tensor)
         input_percentages[x] = seq_length / float(max_seqlength)
         target_sizes[x] = len(target)
-        targets.extend(target)
+        targets.extend(target) #previously extend
     targets = torch.IntTensor(targets)
     return inputs, targets, input_percentages, target_sizes
 
