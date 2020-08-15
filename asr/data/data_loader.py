@@ -18,10 +18,10 @@ from .spec_augment import spec_augment
 
 windows = {'hamming': scipy.signal.hamming, 'hann': scipy.signal.hann, 'blackman': scipy.signal.blackman,
            'bartlett': scipy.signal.bartlett}
-
+data_root_path = '/media/data_dump/hemant/harsh/voxforge_dataset/' 
 
 def load_audio(path):
-    sample_rate, sound = read(path)
+    sample_rate, sound = read(data_root_path+path)
     sound = sound.astype('float32') / 32767  # normalize audio
     if len(sound.shape) > 1:
         if sound.shape[1] == 1:
@@ -34,8 +34,8 @@ def load_audio(path):
 def merge_audio(audio_list):
     merged_audio = []
     for audio in audio_list:
-        merged_audio += audio
-    return merged_audio
+        merged_audio += list(audio)
+    return np.array(merged_audio)
 
 
 class AudioParser(object):
