@@ -62,6 +62,8 @@ def evaluate(test_loader, device, model, decoder, target_decoder, save_output=No
     cer = float(total_cer) / num_chars
     return wer * 100, cer * 100, output_data
 
+def evaluate_acc(test_loader,device,model,save_output=None, verbose=False, half=False):
+    raise NotImplementedError
 
 if __name__ == '__main__':
     args = parser.parse_args()

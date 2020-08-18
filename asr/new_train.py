@@ -10,13 +10,11 @@ import torch.distributed as dist
 import torch.utils.data.distributed
 from apex import amp
 from apex.parallel import DistributedDataParallel
-from warpctc_pytorch import CTCLoss
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
-from decoder import GreedyDecoder
 from logger import VisdomLogger, TensorBoardLogger
-from model import DeepSpeech, supported_rnns
-from test import evaluate
+from new_model import DeepSpeech
+from test import evaluate_acc #make a function evaluate accuracy
 from utils import reduce_tensor, check_loss
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
@@ -31,9 +29,6 @@ parser.add_argument('--labels-path', default='labels.json', help='Contains all c
 parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')
 parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
 parser.add_argument('--window', default='hamming', help='Window type for spectrogram generation')
-parser.add_argument('--hidden-size', default=800, type=int, help='Hidden size of RNNs')
-parser.add_argument('--hidden-layers', default=5, type=int, help='Number of RNN layers')
-parser.add_argument('--rnn-type', default='gru', help='Type of the RNN. rnn|gru|lstm are supported')
 parser.add_argument('--epochs', default=70, type=int, help='Number of training epochs')
 parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
@@ -66,8 +61,6 @@ parser.add_argument('--no-shuffle', dest='no_shuffle', action='store_true',
                     help='Turn off shuffling and sample from dataset based on sequence length (smallest to largest)')
 parser.add_argument('--no-sortaGrad', dest='no_sorta_grad', action='store_true',
                     help='Turn off ordering of dataset on sequence length for the first epoch.')
-parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_false', default=True,
-                    help='Turn off bi-directional RNNs, introduces lookahead convolution')
 parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
                     help='Use simple spectral augmentation on mel spectograms.')
 parser.add_argument('--dist-url', default='tcp://127.0.0.1:1550', type=str,
@@ -88,10 +81,8 @@ parser.add_argument('--weights', default='', help='Continue from checkpoint mode
 torch.manual_seed(123456)
 torch.cuda.manual_seed_all(123456)
 
-
 def to_np(x):
     return x.cpu().numpy()
-
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -110,7 +101,6 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -134,10 +124,8 @@ if __name__ == '__main__':
         main_proc = args.rank == 0  # Only the first proc should save models
     save_folder = args.save_folder
     os.makedirs(save_folder, exist_ok=True)  # Ensure save folder exists
-
-    loss_results, cer_results, wer_results = torch.Tensor(args.epochs), torch.Tensor(args.epochs), torch.Tensor(
-        args.epochs)
-    best_wer = None
+    loss_results, acc_results = torch.Tensor(args.epochs), torch.Tensor(args.epochs)
+    best_acc = None
     if main_proc and args.visdom:
         visdom_logger = VisdomLogger(args.id, args.epochs)
     if main_proc and args.tensorboard:
@@ -160,9 +148,8 @@ if __name__ == '__main__':
             else:
                 start_iter += 1
             avg_loss = int(package.get('avg_loss', 0))
-            loss_results, cer_results, wer_results = package['loss_results'], package['cer_results'], \
-                                                     package['wer_results']
-            best_wer = wer_results[start_epoch]
+            loss_results, acc_results = package['loss_results'], package['acc_results']
+            best_acc = acc_results[start_epoch]
             if main_proc and args.visdom:  # Add previous scores to visdom graph
                 visdom_logger.load_previous_values(start_epoch, package)
             if main_proc and args.tensorboard:  # Previous scores to tensorboard logs
@@ -178,18 +165,9 @@ if __name__ == '__main__':
                           noise_dir=args.noise_dir,
                           noise_prob=args.noise_prob,
                           noise_levels=(args.noise_min, args.noise_max))
-
-        rnn_type = args.rnn_type.lower()
-        assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
-        model = DeepSpeech(rnn_hidden_size=args.hidden_size,
-                           nb_layers=args.hidden_layers,
-                           labels=labels,
-                           rnn_type=supported_rnns[rnn_type],
-                           audio_conf=audio_conf,
-                           bidirectional=args.bidirectional)
-
-    decoder = GreedyDecoder(labels) #Unneeded
     
+    model = DeepSpeech(labels=labels,audio_conf=audio_conf)
+
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
                                        spec_augment=args.spec_augment)
@@ -250,8 +228,13 @@ if __name__ == '__main__':
             inputs = inputs.to(device)
         
             out, output_sizes = model(inputs, input_sizes)
-            out = out.transpose(0, 1)  # TxNxH
-
+            out = out.transpose(1, 0)  # NxTxH
+            targets = targets.transpose(1,0) # NxTxH
+            new_timesteps = out.size(1)
+            old_timesteps = targets.size(1)
+            change_ratio = new_timesteps/old_timesteps
+            print(change_ratio)
+            #change either out or targets to match speech
             print(out.size())
             print(targets.size())
             float_out = out.float()  # ensure float32 for loss
@@ -272,7 +255,6 @@ if __name__ == '__main__':
             if valid_loss:
                 #optimizer.zero_grad()
                 # compute gradient
-
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
                     scaled_loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
@@ -302,8 +284,7 @@ if __name__ == '__main__':
                 print("Saving checkpoint model to %s" % file_path)
                 torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                 loss_results=loss_results,
-                                                wer_results=wer_results, cer_results=cer_results, avg_loss=avg_loss),
-                           file_path)
+                                                acc_results=acc_results, avg_loss=avg_loss),file_path)
             del loss, out, float_out
 
         avg_loss /= len(train_sampler)
@@ -315,58 +296,54 @@ if __name__ == '__main__':
 
         start_iter = 0  # Reset start iteration for next epoch
         with torch.no_grad():
-            wer, cer, output_data = evaluate(test_loader=test_loader,
-                                             device=device,
-                                             model=model,
-                                             decoder=decoder,
-                                             target_decoder=decoder)
+            acc, output_data = evaluate_acc(test_loader=test_loader,
+                                            device=device,
+                                            model=model)
         loss_results[epoch] = avg_loss
-        wer_results[epoch] = wer
-        cer_results[epoch] = cer
+        acc_results[epoch] = acc
         print('Validation Summary Epoch: [{0}]\t'
-              'Average WER {wer:.3f}\t'
-              'Average CER {cer:.3f}\t'.format(
-            epoch + 1, wer=wer, cer=cer))
+              'Average Accuracy {acc:.3f}\t'.format(epoch + 1, acc=acc))
 
         values = {
             'loss_results': loss_results,
-            'cer_results': cer_results,
-            'wer_results': wer_results
-        }
+            'acc_results': acc_results
+            }
         if args.visdom and main_proc:
             visdom_logger.update(epoch, values)
         if args.tensorboard and main_proc:
             tensorboard_logger.update(epoch, values, model.named_parameters())
             values = {
                 'Avg Train Loss': avg_loss,
-                'Avg WER': wer,
-                'Avg CER': cer
+                'Avg ACC': acc
             }
 
         if main_proc and args.checkpoint:
             file_path = '%s/deepspeech_%d.pth' % (save_folder, epoch + 1)
-            try:torch.save(DeepSpeech.serialize(model.module, optimizer=optimizer, epoch=epoch, loss_results=loss_results,
-                                            wer_results=wer_results, cer_results=cer_results),
-                       file_path)
-            except: torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, loss_results=loss_results,
-                                            wer_results=wer_results, cer_results=cer_results),
-                       file_path)
+            try:torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+                                                loss_results=loss_results,
+                                                acc_results=acc_results, avg_loss=avg_loss),file_path)
+            except:torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+                                                loss_results=loss_results,
+                                                acc_results=acc_results, avg_loss=avg_loss),file_path)
         # anneal lr
         for g in optimizer.param_groups:
             g['lr'] = g['lr'] / args.learning_anneal
         print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
-        if main_proc and (best_wer is None or best_wer > wer):
+        if main_proc and (best_acc is None or best_acc > acc):
             print("Found better validated model, saving to %s" % args.model_path)
-            try:torch.save(DeepSpeech.serialize(model.module, optimizer=optimizer, epoch=epoch, loss_results=loss_results,
-                                            wer_results=wer_results, cer_results=cer_results),
-                       args.model_path)
-            except: torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, loss_results=loss_results,
-                                            wer_results=wer_results, cer_results=cer_results),
-                       args.model_path)
-            best_wer = wer
+            try:torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+                                                loss_results=loss_results,
+                                                acc_results=acc_results, avg_loss=avg_loss),args.model_path)
+            except:torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+                                                loss_results=loss_results,
+                                                acc_results=acc_results, avg_loss=avg_loss),args.model_path)
+            best_acc = acc
             avg_loss = 0
 
         if not args.no_shuffle:
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
+
+
+
