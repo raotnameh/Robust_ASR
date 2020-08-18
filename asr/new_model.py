@@ -101,6 +101,9 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
             nn.Linear(rnn_input_size, num_classes, bias=False)
         )
 
+        self.conv_params = {'conv1':{'time_kernel':11,'stride':2,'padding':5},
+                'conv2':{'time_kernel':11,'stride':1,'padding':5}}
+
         self.fc = SequenceWise(fully_connected)
 
         self.inference_softmax = InferenceBatchSoftmax()

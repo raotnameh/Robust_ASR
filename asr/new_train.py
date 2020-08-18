@@ -10,6 +10,7 @@ import torch.distributed as dist
 import torch.utils.data.distributed
 from apex import amp
 from apex.parallel import DistributedDataParallel
+from warpctc_pytorch import CTCLoss
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from logger import VisdomLogger, TensorBoardLogger
@@ -210,10 +211,22 @@ if __name__ == '__main__':
     print(model)
     print("Number of parameters: %d" % DeepSpeech.get_param_size(model))
 
-    criterion = nn.CrossEntropyLoss() #CTCLoss()
+    criterion = nn.CrossEntropyLoss()
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
+    conv_params = model.conv_params
+    def shorten_target(target,new_size,time_dur):
+        ratio = new_size/len(target)
+        new_time_dur = time_dur*ratio
+        new_target = list(target)
+        new_target = new_target[:int(new_time_dur[0])] + \
+                new_target[int(time_dur[0]):int(time_dur[0])+int(new_time_dur[1])] + \
+                new_target[int(time_dur[1]):int(time_dur[1])+int(new_time_dur[2])]
+        while(len(new_target)<new_size):
+            new_target.append(new_target[-1])
+        return new_target
+
     for epoch in range(start_epoch, args.epochs):
         model.train()
         end = time.time()
@@ -221,24 +234,41 @@ if __name__ == '__main__':
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
                 break
-            inputs, targets, input_percentages, target_sizes = data
+            inputs, targets, input_percentages, target_sizes, time_durs = data
+            print(time_durs.data)
             input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
             # measure data loading time
             data_time.update(time.time() - end)
             inputs = inputs.to(device)
         
-            out, output_sizes = model(inputs, input_sizes)
-            out = out.transpose(1, 0)  # NxTxH
-            #targets = targets.transpose(1,0) # NxTxH
-            new_timesteps = out.size(1)
-            old_timesteps = targets.size(0)
-            change_ratio = new_timesteps/old_timesteps
-            print(new_timesteps,old_timesteps)
+            out, output_sizes = model(inputs, input_sizes)#NxTxH
+            out = out.transpose(1, 2)  # NxHxT
+            new_timesteps = out.size(2)
+            new_targets = []
+            print(target_sizes)
+            for idx,size in enumerate(target_sizes.data.cpu().numpy()):
+                new_size = size.item()
+                for key in conv_params:
+                    params = conv_params[key]
+                    new_size = int((new_size + 2*params['padding'] - params['time_kernel'])/params['stride'] + 1)
+                prev = 0
+                time_dur = time_durs.data.cpu().numpy()[idx]
+                new_target = targets.data.numpy()[prev:size.item()]
+                new_target = shorten_target(new_target,new_size,time_dur)
+                new_target += [0]*(new_timesteps-len(new_target))
+                prev = size.item()
+                new_targets.append(new_target)
+
+            new_targets = torch.Tensor(new_targets).to(torch.long).to(device)
+
             #change either out or targets to match speech
+            #print(input_sizes)
+            #print(target_sizes)
             print(out.size())
-            print(targets.size())
+            print(new_targets.size())
             float_out = out.float()  # ensure float32 for loss
-            loss = criterion(float_out, targets) # output_sizes, target_sizes).to(device)
+            print(float_out.size())
+            loss = criterion(float_out, new_targets).to(device)
             loss = loss / inputs.size(0)  # average the loss by minibatch
             
             if math.isnan(loss.item()):

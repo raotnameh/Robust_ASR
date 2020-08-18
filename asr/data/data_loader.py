@@ -149,6 +149,8 @@ class SpectrogramParser(AudioParser):
         if self.spec_augment:
             spect = spec_augment(spect)
 
+        while(len(time_dur)!=3):
+            time_dur.append(0)
         return spect,time_dur
 
     def parse_transcript(self, transcript_path):
@@ -186,7 +188,7 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         spect,time_dur = self.parse_audio(audio_path_list)
         #print("time_dur",sum(time_dur),spect.shape[1])
         labels = self.parse_label(time_dur,labels)
-        return spect, labels
+        return spect, labels,time_dur
     
     def parse_label(self,time_dur,labels):
         labs = []
@@ -215,17 +217,21 @@ def _collate_fn(batch):
     input_percentages = torch.FloatTensor(minibatch_size)
     target_sizes = torch.IntTensor(minibatch_size)
     targets = []
+    time_durs = []
     for x in range(minibatch_size):
         sample = batch[x]
         tensor = sample[0]
         target = sample[1]
+        time_dur = sample[2]
         seq_length = tensor.size(1)
         inputs[x][0].narrow(1, 0, seq_length).copy_(tensor)
         input_percentages[x] = seq_length / float(max_seqlength)
         target_sizes[x] = len(target)
         targets.extend(target) #previously extend
+        time_durs.append(time_dur)
     targets = torch.IntTensor(targets)
-    return inputs, targets, input_percentages, target_sizes
+    time_durs = torch.Tensor(time_durs)
+    return inputs, targets, input_percentages, target_sizes, time_durs
 
 
 class AudioDataLoader(DataLoader):
