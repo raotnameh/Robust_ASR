@@ -233,7 +233,7 @@ if __name__ == '__main__':
             new_timesteps = out.size(1)
             old_timesteps = targets.size(0)
             change_ratio = new_timesteps/old_timesteps
-            print(change_ratio)
+            print(new_timesteps,old_timesteps)
             #change either out or targets to match speech
             print(out.size())
             print(targets.size())
