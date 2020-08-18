@@ -228,9 +228,9 @@ if __name__ == '__main__':
             inputs = inputs.to(device)
         
             out, output_sizes = model(inputs, input_sizes)
-            out = out.transpose(0, 1)  # NxTxH
+            out = out.transpose(1, 0)  # NxTxH
             #targets = targets.transpose(1,0) # NxTxH
-            new_timesteps = out.size(0)
+            new_timesteps = out.size(1)
             old_timesteps = targets.size(0)
             change_ratio = new_timesteps/old_timesteps
             print(new_timesteps,old_timesteps)

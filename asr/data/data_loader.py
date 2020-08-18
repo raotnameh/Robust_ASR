@@ -223,7 +223,7 @@ def _collate_fn(batch):
         inputs[x][0].narrow(1, 0, seq_length).copy_(tensor)
         input_percentages[x] = seq_length / float(max_seqlength)
         target_sizes[x] = len(target)
-        targets.extend(target) #previously extend
+        targets.append(target) #previously extend
     targets = torch.IntTensor(targets)
     return inputs, targets, input_percentages, target_sizes
 
