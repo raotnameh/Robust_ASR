@@ -18,7 +18,7 @@ from .spec_augment import spec_augment
 
 windows = {'hamming': scipy.signal.hamming, 'hann': scipy.signal.hann, 'blackman': scipy.signal.blackman,
            'bartlett': scipy.signal.bartlett}
-
+accents = {'EN':1, 'US':2, 'CA':3, 'AU':4, 'IN':5, 'NZ':6, 'WE':7, 'IR':8, 'SC':9}
 
 def load_audio(path):
     sample_rate, sound = read(path)
@@ -168,10 +168,11 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         audio_path, transcript_path = sample[0], sample[1]
         spect = self.parse_audio(audio_path)
         transcript = self.parse_transcript(transcript_path)
-        if (len(sample)>2): #return accentData as well if it's available
-            accentData = sample[2]
-            return spect,transcript,accentData
-        return spect, transcript
+        # if (len(sample)>2): #return accentData as well if it's available
+        #     print("using accents")
+        #     accentData = accents[sample[2]]
+        #     return spect,transcript,accentData
+        return spect, transcript,accents[sample[2]]
 
     def parse_transcript(self, transcript_path):
         with open(transcript_path, 'r', encoding='utf8') as transcript_file:
@@ -186,7 +187,6 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
 def _collate_fn(batch):
     def func(p):
         return p[0].size(1)
-
     batch = sorted(batch, key=lambda sample: sample[0].size(1), reverse=True)
     longest_sample = max(batch, key=func)[0]
     freq_size = longest_sample.size(0)
@@ -206,7 +206,7 @@ def _collate_fn(batch):
         target_sizes[x] = len(target)
         targets.extend(target)
     targets = torch.IntTensor(targets)
-    return inputs, targets, input_percentages, target_sizes
+    return inputs, targets, input_percentages, target_sizes, [i[-2] for i in batch]
 
 
 class AudioDataLoader(DataLoader):

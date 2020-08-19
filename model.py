@@ -1,17 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.parameter import Parameter
 
 from contextlib import ExitStack
-
-
 import math
 from collections import OrderedDict
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.parameter import Parameter
 
 supported_rnns = {
     'lstm': nn.LSTM,
@@ -109,10 +104,10 @@ class BatchRNN(nn.Module):
 
 
 
-class Predictor(nn.Module):
+class DeepSpeech(nn.Module):
     def __init__(self, rnn_type=nn.LSTM, labels="abc", rnn_hidden_size=768, nb_layers=5, audio_conf=None,
                  bidirectional=True, context=20):
-        super(Predictor, self).__init__()
+        super(DeepSpeech, self).__init__()
 
         # model metadata needed for serialization/deserialization
         if audio_conf is None:
@@ -203,7 +198,7 @@ class Predictor(nn.Module):
         seq_len = input_length
         for m in self.conv.modules():
             if type(m) == nn.modules.conv.Conv2d:
-                seq_len = ((seq_len + 2 * m.padding[1] - m.dilation[1] * (m.kernel_size[1] - 1) - 1) / m.stride[1] + 1)
+                seq_len = ((seq_len + 2 * m.padding[1] - m.dilation[1] * (m.kernel_size[1] - 1) - 1) // m.stride[1] + 1)
         return seq_len.int()
 
     @classmethod
@@ -300,13 +295,13 @@ class ForgetNet(nn.Module):
         return x
 
 class DiscimnateNet(nn.Module):
-    def __init__(self):
+    def __init__(self,classes):
         super(DiscimnateNet, self).__init__()
         self.conv_1 = nn.Conv2d(32, 64, kernel_size=(21, 11), stride=(1, 1), padding=(10, 5))
         self.conv_2 = nn.Conv2d(64, 128, kernel_size=(11, 11), stride=(1, 1), padding=(5, 5))
         self.conv_3 = nn.Conv2d(128, 256, kernel_size=(5, 11), stride=(1, 1), padding=(2, 5))
         self.adaptive_pooling = nn.AdaptiveAvgPool2d((2, 2))
-        self.linear_1 = torch.nn.Linear(1024, 1)
+        self.linear_1 = torch.nn.Linear(1024, classes)
         self.batch_norm_1 = nn.BatchNorm2d(64)
         self.batch_norm_2 = nn.BatchNorm2d(128)
         self.batch_norm_3 = nn.BatchNorm2d(256)
@@ -324,11 +319,14 @@ class DiscimnateNet(nn.Module):
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
+
+        
         self.conv_1 = nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5))
         self.conv_2 = nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5))
         self.batch_norm_1 = nn.BatchNorm2d(32)
         self.batch_norm_2 = nn.BatchNorm2d(32)
         self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
+
 
     def forward(self,x):
         x = self.hard_tanh(self.batch_norm_1(self.conv_1(x)))
