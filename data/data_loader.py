@@ -206,7 +206,7 @@ def _collate_fn(batch):
         target_sizes[x] = len(target)
         targets.extend(target)
     targets = torch.IntTensor(targets)
-    return inputs, targets, input_percentages, target_sizes, [i[-2] for i in batch]
+    return inputs, targets, input_percentages, target_sizes, [i[-1] for i in batch]
 
 
 class AudioDataLoader(DataLoader):

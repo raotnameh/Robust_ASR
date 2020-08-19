@@ -198,7 +198,7 @@ if __name__ == '__main__':
     discriminator = DiscimnateNet(classes=9)
     discriminator_parameters = discriminator.parameters()
     discriminator_optimizer = torch.optim.Adam(discriminator_parameters, lr=args.lr,weight_decay=1e-4,amsgrad=True)
-    dis_loss = nn.BCELoss()
+    dis_loss = nn.CrossEntropyLoss()
      
     # print(asr)
     print("Number of parameters: %d" % DeepSpeech.get_param_size(asr))
@@ -214,8 +214,7 @@ if __name__ == '__main__':
             
             inputs, targets, input_percentages, target_sizes, accents = data
             print("train-start")
-            # print(inputs.shape, input_percentages, target_sizes, accents)
-            
+            print(torch.tensor(accents).reshape(-1,1))
             input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
             print(input_sizes)
 
@@ -234,25 +233,17 @@ if __name__ == '__main__':
             #discriminator
             discriminator_out = discriminator(z_)
             print(discriminator_out.shape)
-            discriminator_loss = dis_loss(discriminator_out, accents)
+            discriminator_loss = dis_loss(discriminator_out, torch.tensor(accents))
             
             #asr
-            asr_out = asr(inputs, input_sizes)
+            asr_out, asr_out_sizes = asr(inputs, input_sizes)
             print(asr_out[0].shape, asr_out[-1].shape)
 
             asr_out = asr_out.transpose(0, 1)  # TxNxH
 
             float_out = asr_out.float()  # ensure float32 for loss
-            asr_loss = criterion(float_out, targets, output_sizes, target_sizes).to(device)
+            asr_loss = criterion(float_out, targets, asr_out_sizes, target_sizes).to(device)
             asr_loss = asr_loss / inputs.size(0)  # average the loss by minibatch
-            
-            if math.isnan(loss.item()):
-                continue
-
-
-
-
-
 
 
             print("train-stop")
