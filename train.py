@@ -230,12 +230,24 @@ if __name__ == '__main__':
             z_ = z * m
             print(z_.shape)
 
+            
+            #discriminator
+            discriminator_out = discriminator(z_)
+            print(discriminator_out.shape)
+            discriminator_loss = dis_loss(discriminator_out, accents)
+            
+            #asr
             asr_out = asr(inputs, input_sizes)
             print(asr_out[0].shape, asr_out[-1].shape)
 
-            discriminator_out = discriminator(z_)
-            print(discriminator_out.shape)
+            asr_out = asr_out.transpose(0, 1)  # TxNxH
 
+            float_out = asr_out.float()  # ensure float32 for loss
+            asr_loss = criterion(float_out, targets, output_sizes, target_sizes).to(device)
+            asr_loss = asr_loss / inputs.size(0)  # average the loss by minibatch
+            
+            if math.isnan(loss.item()):
+                continue
 
 
 
