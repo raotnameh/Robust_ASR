@@ -38,3 +38,15 @@ def load_model(device, model_path, use_half):
     if use_half:
         model = model.half()
     return model
+
+
+def shorten_target(target,new_size,time_dur):
+    ratio = new_size/len(target)
+    new_time_dur = time_dur*ratio
+    new_target = list(target)
+    new_target = new_target[:int(new_time_dur[0])] + \
+            new_target[int(time_dur[0]):int(time_dur[0])+int(new_time_dur[1])] + \
+            new_target[int(time_dur[1]):int(time_dur[1])+int(new_time_dur[2])]
+    while(len(new_target)<new_size):
+        new_target.append(new_target[-1])
+    return new_target

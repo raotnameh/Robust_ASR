@@ -16,7 +16,7 @@ from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampl
 from logger import VisdomLogger, TensorBoardLogger
 from new_model import DeepSpeech
 from test import evaluate_acc #make a function evaluate accuracy
-from utils import reduce_tensor, check_loss
+from utils import reduce_tensor, check_loss, shorten_target
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--train-manifest', metavar='DIR',
@@ -216,16 +216,6 @@ if __name__ == '__main__':
     data_time = AverageMeter()
     losses = AverageMeter()
     conv_params = model.conv_params
-    def shorten_target(target,new_size,time_dur):
-        ratio = new_size/len(target)
-        new_time_dur = time_dur*ratio
-        new_target = list(target)
-        new_target = new_target[:int(new_time_dur[0])] + \
-                new_target[int(time_dur[0]):int(time_dur[0])+int(new_time_dur[1])] + \
-                new_target[int(time_dur[1]):int(time_dur[1])+int(new_time_dur[2])]
-        while(len(new_target)<new_size):
-            new_target.append(new_target[-1])
-        return new_target
 
     for epoch in range(start_epoch, args.epochs):
         model.train()
