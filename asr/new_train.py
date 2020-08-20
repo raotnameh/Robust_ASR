@@ -10,7 +10,7 @@ import torch.distributed as dist
 import torch.utils.data.distributed
 from apex import amp
 from apex.parallel import DistributedDataParallel
-from warpctc_pytorch import CTCLoss
+#from warpctc_pytorch import CTCLoss
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from logger import VisdomLogger, TensorBoardLogger
@@ -25,7 +25,7 @@ parser.add_argument('--val-manifest', metavar='DIR',
                     help='path to validation manifest csv', default='data/val_manifest.csv')
 parser.add_argument('--sample-rate', default=16000, type=int, help='Sample rate')
 parser.add_argument('--batch-size', default=20, type=int, help='Batch size for training')
-parser.add_argument('--num-workers', default=4, type=int, help='Number of workers used in data-loading')
+parser.add_argument('--num-workers', default=1, type=int, help='Number of workers used in data-loading')
 parser.add_argument('--labels-path', default='labels.json', help='Contains all characters for transcription')
 parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')
 parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
@@ -279,8 +279,8 @@ if __name__ == '__main__':
                     with amp.scale_loss(loss, optimizer) as scaled_loss:
                         scaled_loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
-                    if i%16 == 0:
-                    # print('optimizer step')
+                    if i%1 == 0:
+                        print('optimizer step')
                         optimizer.step()
                         optimizer.zero_grad()
                 else:
@@ -308,7 +308,6 @@ if __name__ == '__main__':
                                                     acc_results=acc_results, avg_loss=avg_loss),file_path)
                 del loss, out, float_out
             except: pass
-            break
         avg_loss /= len(train_sampler)
 
         epoch_time = time.time() - start_epoch_time
