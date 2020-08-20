@@ -130,8 +130,12 @@ class SpectrogramParser(AudioParser):
         win_length = n_fft
         hop_length = int(self.sample_rate * self.window_stride)
         # STFT
-        D = librosa.stft(y, n_fft=n_fft, hop_length=hop_length,
-                         win_length=win_length, window=self.window)
+        D = np.zeros((161,1432))
+        try: D = librosa.stft(y, n_fft=n_fft, hop_length=hop_length,
+                win_length=win_length, window=self.window)
+        except: 
+            print(audio_path_list)
+            raise ParameterError
         time_conv_ratio = D.shape[1]/total_dur
         time_dur = [int(i*time_conv_ratio) for i in time_dur] #Calculating duration in spectogram timesteps
         if sum(time_dur) != D.shape[1]:

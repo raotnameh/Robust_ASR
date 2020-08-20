@@ -77,7 +77,7 @@ def evaluate_acc(test_loader,device,model,save_output=None, verbose=False, half=
             inputs = inputs.half()
 
         out, output_sizes = model(inputs, input_sizes)
-        new_timesteps = out.size(2)
+        new_timesteps = out.size(1)
 
         for idx,size in enumerate(target_sizes.data.cpu().numpy()):
             new_size = size.item()

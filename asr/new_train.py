@@ -222,91 +222,93 @@ if __name__ == '__main__':
         end = time.time()
         start_epoch_time = time.time()
         for i, (data) in enumerate(train_loader, start=start_iter):
-            if i == len(train_sampler):
-                break
-            inputs, targets, input_percentages, target_sizes, time_durs = data
-            print(time_durs.data)
-            input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
-            # measure data loading time
-            data_time.update(time.time() - end)
-            inputs = inputs.to(device)
-        
-            out, output_sizes = model(inputs, input_sizes)#NxTxH
-            out = out.transpose(1, 2)  # NxHxT
-            new_timesteps = out.size(2)
-            new_targets = []
-            print(target_sizes)
-            for idx,size in enumerate(target_sizes.data.cpu().numpy()):
-                new_size = size.item()
-                for key in conv_params:
-                    params = conv_params[key]
-                    new_size = int((new_size + 2*params['padding'] - params['time_kernel'])/params['stride'] + 1)
-                prev = 0
-                time_dur = time_durs.data.cpu().numpy()[idx]
-                new_target = targets.data.numpy()[prev:size.item()]
-                new_target = shorten_target(new_target,new_size,time_dur)
-                new_target += [0]*(new_timesteps-len(new_target))
-                prev = size.item()
-                new_targets.append(new_target)
-
-            new_targets = torch.Tensor(new_targets).to(torch.long).to(device)
-
-            #change either out or targets to match speech
-            #print(input_sizes)
-            #print(target_sizes)
-            print(out.size())
-            print(new_targets.size())
-            float_out = out.float()  # ensure float32 for loss
-            print(float_out.size())
-            loss = criterion(float_out, new_targets).to(device)
-            loss = loss / inputs.size(0)  # average the loss by minibatch
+            try:
+                if i == len(train_sampler):
+                    break
+                inputs, targets, input_percentages, target_sizes, time_durs = data
+                #print(time_durs.data)
+                input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+                # measure data loading time
+                data_time.update(time.time() - end)
+                inputs = inputs.to(device)
             
-            if math.isnan(loss.item()):
-                continue
+                out, output_sizes = model(inputs, input_sizes)#NxTxH
+                out = out.transpose(1, 2)  # NxHxT
+                new_timesteps = out.size(2)
+                new_targets = []
+                #print(target_sizes)
+                for idx,size in enumerate(target_sizes.data.cpu().numpy()):
+                    new_size = size.item()
+                    for key in conv_params:
+                        params = conv_params[key]
+                        new_size = int((new_size + 2*params['padding'] - params['time_kernel'])/params['stride'] + 1)
+                    prev = 0
+                    time_dur = time_durs.data.cpu().numpy()[idx]
+                    new_target = targets.data.numpy()[prev:size.item()]
+                    new_target = shorten_target(new_target,new_size,time_dur)
+                    new_target += [0]*(new_timesteps-len(new_target))
+                    prev = size.item()
+                    new_targets.append(new_target)
 
-            if args.distributed:
-                loss = loss.to(device)
-                loss_value = reduce_tensor(loss, args.world_size).item()
-            else:
-                loss_value = loss.item()
+                new_targets = torch.Tensor(new_targets).to(torch.long).to(device)
 
-            # Check to ensure valid loss was calculated
-            valid_loss, error = check_loss(loss, loss_value)
-            if valid_loss:
-                #optimizer.zero_grad()
-                # compute gradient
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
-                if i%16 == 0:
-                   # print('optimizer step')
-                    optimizer.step()
-                    optimizer.zero_grad()
-            else:
-                print(error)
-                print('Skipping grad update')
-                loss_value = 0
+                #change either out or targets to match speech
+                #print(input_sizes)
+                #print(target_sizes)
+                #print(out.size())
+                #print(new_targets.size())
+                float_out = out.float()  # ensure float32 for loss
+                #print(float_out.size())
+                loss = criterion(float_out, new_targets).to(device)
+                loss = loss / inputs.size(0)  # average the loss by minibatch
+                
+                if math.isnan(loss.item()):
+                    continue
 
-            avg_loss += loss_value
-            losses.update(loss_value, inputs.size(0))
+                if args.distributed:
+                    loss = loss.to(device)
+                    loss_value = reduce_tensor(loss, args.world_size).item()
+                else:
+                    loss_value = loss.item()
 
-            # measure elapsed time
-            batch_time.update(time.time() - end)
-            end = time.time()
-            if not args.silent:
-                print('Epoch: [{0}][{1}/{2}]\t'
-                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                      'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
-                    (epoch + 1), (i + 1), len(train_sampler), batch_time=batch_time, data_time=data_time, loss=losses))
-            if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0 and main_proc:
-                file_path = '%s/deepspeech_checkpoint_epoch_%d_iter_%d.pth' % (save_folder, epoch + 1, i + 1)
-                print("Saving checkpoint model to %s" % file_path)
-                torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
-                                                loss_results=loss_results,
-                                                acc_results=acc_results, avg_loss=avg_loss),file_path)
-            del loss, out, float_out
+                # Check to ensure valid loss was calculated
+                valid_loss, error = check_loss(loss, loss_value)
+                if valid_loss:
+                    #optimizer.zero_grad()
+                    # compute gradient
+                    with amp.scale_loss(loss, optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
+                    if i%16 == 0:
+                    # print('optimizer step')
+                        optimizer.step()
+                        optimizer.zero_grad()
+                else:
+                    print(error)
+                    print('Skipping grad update')
+                    loss_value = 0
 
+                avg_loss += loss_value
+                losses.update(loss_value, inputs.size(0))
+
+                # measure elapsed time
+                batch_time.update(time.time() - end)
+                end = time.time()
+                if not args.silent:
+                    print('Epoch: [{0}][{1}/{2}]\t'
+                        'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                        'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                        'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+                        (epoch + 1), (i + 1), len(train_sampler), batch_time=batch_time, data_time=data_time, loss=losses))
+                if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0 and main_proc:
+                    file_path = '%s/deepspeech_checkpoint_epoch_%d_iter_%d.pth' % (save_folder, epoch + 1, i + 1)
+                    print("Saving checkpoint model to %s" % file_path)
+                    torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+                                                    loss_results=loss_results,
+                                                    acc_results=acc_results, avg_loss=avg_loss),file_path)
+                del loss, out, float_out
+            except: pass
+            break
         avg_loss /= len(train_sampler)
 
         epoch_time = time.time() - start_epoch_time
@@ -350,7 +352,7 @@ if __name__ == '__main__':
             g['lr'] = g['lr'] / args.learning_anneal
         print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
-        if main_proc and (best_acc is None or best_acc > acc):
+        if main_proc and (best_acc is None or best_acc < acc):
             print("Found better validated model, saving to %s" % args.model_path)
             try:torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                 loss_results=loss_results,
