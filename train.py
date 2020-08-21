@@ -278,8 +278,8 @@ if __name__ == '__main__':
                 [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
             
-            if i%500 == 499:
-                break
+            if i%10 == 9:
+                    break
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
@@ -334,6 +334,9 @@ if __name__ == '__main__':
                         num = num + 1
                 length = length + len(accents)
 
+                if i%10 == 9:
+                    break
+
         print('Validation Summary Epoch: [{0}]\t'
                 'Average WER {wer:.3f}\t'
                 'Average CER {cer:.3f}\t'
@@ -363,3 +366,7 @@ if __name__ == '__main__':
         # if not args.no_shuffle:
         #     print("Shuffling batches...")
         #     train_sampler.shuffle(epoch)
+# Training Summary Epoch: [1]     Time taken (s): 193.08977723121643      D/P average Loss 1.7909, 133.1424
+# 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 143/143 [00:41<00:00,  3.45it/s]
+# Validation Summary Epoch: [1]   Average WER 1.053       Average CER 0.732       Discriminator accuracy  55.517
+# Epoch: [2][1/3862]                                       Discriminator Loss: 1.7652 (1.7652)
