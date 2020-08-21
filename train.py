@@ -100,8 +100,9 @@ if __name__ == '__main__':
     random.seed(args.seed)
 
     #Gpu setting
-    device = torch.device("cuda:"+str(args.gpu_rank) if args.cuda else "cpu")
-    
+    device = torch.device("cuda" if args.cuda else "cpu")
+    torch.cuda.set_device(int(args.gpu_rank))
+
     #Where to save the models
     save_folder = args.save_folder
     os.makedirs(save_folder, exist_ok=True)  # Ensure save folder exists
@@ -149,7 +150,7 @@ if __name__ == '__main__':
 
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler)
-    test_loader = AudioDataLoader(test_dataset, batch_size=args.batch_size,
+    test_loader = AudioDataLoader(test_dataset, batch_size=int(1.5*args.batch_size),
                                   num_workers=args.num_workers)
 
     if args.no_sorta_grad:
@@ -212,7 +213,8 @@ if __name__ == '__main__':
 
     # Printing the parameters of all the different modules 
     [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
-
+    a = f"epoch,wer,cer,accuracy,d_avg_loss, p_avg_loss\n"
+    
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
@@ -262,7 +264,7 @@ if __name__ == '__main__':
                 # Loss
                 # decoder_loss = dec_loss(decoder_out,inputs)
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
-                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
                 loss = asr_loss #+ decoder_loss
                 p_loss = loss.item()
@@ -278,8 +280,8 @@ if __name__ == '__main__':
                 [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
             
-            if i%10 == 9:
-                    break
+            #if i%10 == 9:
+                   # break
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
@@ -287,9 +289,6 @@ if __name__ == '__main__':
               'Time taken (s): {1}\t'
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
 
-        d_avg_loss, p_avg_loss = 0, 0
-
-        
         with torch.no_grad():
             total_cer, total_wer, num_tokens, num_chars = 0, 0, 0, 0
             length, num = 0, 0
@@ -334,8 +333,8 @@ if __name__ == '__main__':
                         num = num + 1
                 length = length + len(accents)
 
-                if i%10 == 9:
-                    break
+                #if i%10 == 9:
+                   #break
 
         print('Validation Summary Epoch: [{0}]\t'
                 'Average WER {wer:.3f}\t'
@@ -343,17 +342,22 @@ if __name__ == '__main__':
                 'Discriminator accuracy {acc: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc = num/length *100 ))
 
         
-        # if args.checkpoint:
-        #     file_path = '%s/deepspeech_%d.pth' % (save_folder, epoch + 1)
-        #     try:torch.save(DeepSpeech.serialize(model.module, epoch=epoch,
-        #                         wer_results=wer),file_path)
-        #     except: torch.save(DeepSpeech.serialize(model, epoch=epoch,
-        #                         wer_results=wer),file_path)
+        a += f"{epoch},{wer},{cer},{num/length *100},{d_avg_loss},{p_avg_loss}\n"
+
+        with open("loss.txt", "w") as f:
+            f.write(a)
+
+        d_avg_loss, p_avg_loss = 0, 0
         
-        # # anneal lr
-        # for g in asr_optimizer.param_groups:
-        #     g['lr'] = g['lr'] / args.learning_anneal
-        # print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
+        if args.checkpoint:
+            for k,v in models.items():
+                torch.save(v[0],f"{args.save_folder}{k}_{epoch+1}.pth")
+
+        
+        # anneal lr
+        for g in asr_optimizer.param_groups:
+            g['lr'] = g['lr'] / args.learning_anneal
+        print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
         # if best_wer is None or best_wer > wer:
         #     print("Found better validated model, saving to %s" % args.model_path)
@@ -363,9 +367,9 @@ if __name__ == '__main__':
         #                args.model_path)
         #     best_wer = wer
 
-        # if not args.no_shuffle:
-        #     print("Shuffling batches...")
-        #     train_sampler.shuffle(epoch)
+        if not args.no_shuffle:
+            print("Shuffling batches...")
+            train_sampler.shuffle(epoch)
 # Training Summary Epoch: [1]     Time taken (s): 193.08977723121643      D/P average Loss 1.7909, 133.1424
 # 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 143/143 [00:41<00:00,  3.45it/s]
 # Validation Summary Epoch: [1]   Average WER 1.053       Average CER 0.732       Discriminator accuracy  55.517
