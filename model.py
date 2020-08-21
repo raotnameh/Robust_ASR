@@ -124,14 +124,14 @@ class DeepSpeech(nn.Module):
         window_size = self.audio_conf.get("window_size", 0.02)
         num_classes = len(self.labels)
 
-        self.conv = MaskConv(nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
-            nn.BatchNorm2d(32),
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
-            nn.BatchNorm2d(32),
-            nn.Hardtanh(0, 20, inplace=True)
-        ))
+        # self.conv = MaskConv(nn.Sequential(
+        #     nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
+        #     nn.BatchNorm2d(32),
+        #     nn.Hardtanh(0, 20, inplace=True),
+        #     nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
+        #     nn.BatchNorm2d(32),
+        #     nn.Hardtanh(0, 20, inplace=True)
+        # ))
         # Based on above convolutions and spectrogram size using conv formula (W - F + 2P)/ S+1
         rnn_input_size = int(math.floor((sample_rate * window_size) / 2) + 1)
         #print(rnn_input_size)
@@ -161,10 +161,13 @@ class DeepSpeech(nn.Module):
         self.inference_softmax = InferenceBatchSoftmax()
 
     def forward(self, x, lengths):
-        lengths = lengths.cpu().int()
-        output_lengths = self.get_seq_lens(lengths)
-        #print(x.shape)
-        x, _ = self.conv(x, output_lengths)
+        # lengths = lengths.cpu().int()
+        # print(lengths)
+        # output_lengths = self.get_seq_lens(lengths)
+        # print(output_lengths)
+        # x, _ = self.conv(x, output_lengths)
+        # print("shape: ", x.shape)
+        output_lengths = lengths
 
         sizes = x.size()
         #print(x.shape)
@@ -321,17 +324,39 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         
-        self.conv_1 = nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5))
-        self.conv_2 = nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5))
-        self.batch_norm_1 = nn.BatchNorm2d(32)
-        self.batch_norm_2 = nn.BatchNorm2d(32)
-        self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
+        # self.conv_1 = nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5))
+        # self.conv_2 = nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5))
+        # self.batch_norm_1 = nn.BatchNorm2d(32)
+        # self.batch_norm_2 = nn.BatchNorm2d(32)
+        # self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
 
+        self.conv =MaskConv(nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
+            nn.BatchNorm2d(32),
+            nn.Hardtanh(0, 20, inplace=True),
+            nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
+            nn.BatchNorm2d(32),
+            nn.Hardtanh(0, 20, inplace=True)
+        ))
 
-    def forward(self,x):
-        x = self.hard_tanh(self.batch_norm_1(self.conv_1(x)))
-        x = self.hard_tanh(self.batch_norm_2(self.conv_2(x)))
-        return x
+    def forward(self,x,lengths):
+        # x = self.hard_tanh(self.batch_norm_1(self.conv_1(x)))
+        # x = self.hard_tanh(self.batch_norm_2(self.conv_2(x)))
+        x, _ = self.conv(x,lengths)
+        return x, self.get_seq_lens(lengths)
+
+    def get_seq_lens(self, input_length):
+        """
+        Given a 1D Tensor or Variable containing integer sequence lengths, return a 1D tensor or variable
+        containing the size sequences that will be output by the network.
+        :param input_length: 1D Tensor
+        :return: 1D Tensor scaled by model
+        """
+        seq_len = input_length
+        for m in self.conv.modules():
+            if type(m) == nn.modules.conv.Conv2d:
+                seq_len = ((seq_len + 2 * m.padding[1] - m.dilation[1] * (m.kernel_size[1] - 1) - 1) // m.stride[1] + 1)
+        return seq_len.int()
 
 class Decoder(nn.Module):
     def __init__(self):

@@ -9,7 +9,7 @@ import torch.nn as nn
 import numpy as np
 from warpctc_pytorch import CTCLoss
 
-from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler
+from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, accents
 from decoder import GreedyDecoder
 from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
 
@@ -21,7 +21,7 @@ parser.add_argument('--train-manifest', metavar='DIR',
 parser.add_argument('--val-manifest', metavar='DIR',
                     help='path to validation manifest csv', default='data/val_manifest.csv')
 parser.add_argument('--sample-rate', default=16000, type=int, help='Sample rate')
-parser.add_argument('--batch-size', default=20, type=int, help='Batch size for training')
+parser.add_argument('--batch-size', default=2, type=int, help='Batch size for training')
 parser.add_argument('--num-workers', default=4, type=int, help='Number of workers used in data-loading')
 parser.add_argument('--labels-path', default='labels.json', help='Contains all characters for transcription')
 parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')
@@ -100,7 +100,6 @@ if __name__ == '__main__':
 
     #Gpu setting
     device = torch.device("cuda:"+str(args.gpu_rank) if args.cuda else "cpu")
-    torch.cuda.set_device(int(args.gpu_rank))
     
     #Where to save the models
     save_folder = args.save_folder
@@ -127,13 +126,6 @@ if __name__ == '__main__':
     #Creating the ASR model block
     rnn_type = args.rnn_type.lower()
     assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
-    # asr = DeepSpeech(rnn_hidden_size=args.hidden_size,
-    #                     nb_layers=args.hidden_layers,
-    #                     labels=labels,
-    #                     rnn_type=supported_rnns[rnn_type],
-    #                     audio_conf=audio_conf,
-    #                     bidirectional=args.bidirectional)
-    # asr = asr.to(device)
     #Decoder used for evaluation
     decoder = GreedyDecoder(labels)
 
@@ -174,34 +166,51 @@ if __name__ == '__main__':
                         rnn_type=supported_rnns[rnn_type],
                         audio_conf=audio_conf,
                         bidirectional=args.bidirectional)
+    asr = asr.to(device)
     asr_parameters = asr.parameters()
     asr_optimizer = torch.optim.Adam(asr_parameters, lr=args.lr,weight_decay=1e-4,amsgrad=True)
     criterion = CTCLoss()
 
-    #Encoder
+    # Encoder and Decoder
     encoder = Encoder()
+    encoder = encoder.to(device)
     encoder_parameters = encoder.parameters()
 
-    #Decoder 
     decoder = Decoder()
+    decoder =decoder.to(device)
     decoder_parameters = decoder.parameters()
+    dec_loss = nn.MSELoss()
+
     ed_optimizer = torch.optim.Adam(list(encoder_parameters)+list(decoder_parameters),
                                      lr=args.lr,weight_decay=1e-4,amsgrad=True)
-    ed_loss = nn.MSELoss()
 
-    #Forget_net
+    # Forget_net
     fnet = ForgetNet()
+    fnet = fnet.to(device)
     fnet_parameters = fnet.parameters()
     fnet_optimizer = torch.optim.Adam(fnet_parameters, lr=args.lr,weight_decay=1e-4,amsgrad=True)
 
-    #discriminator
-    discriminator = DiscimnateNet(classes=9)
+    # Discriminator
+    discriminator = DiscimnateNet(classes=len(accents))
+    discriminator = discriminator.to(device)
     discriminator_parameters = discriminator.parameters()
     discriminator_optimizer = torch.optim.Adam(discriminator_parameters, lr=args.lr,weight_decay=1e-4,amsgrad=True)
     dis_loss = nn.CrossEntropyLoss()
-     
-    # print(asr)
-    print("Number of parameters: %d" % DeepSpeech.get_param_size(asr))
+    
+    # Models
+    models = {'predictor': asr, 'encoder': encoder, 'decoder': decoder, 'forget_net': fnet, 'discrimator': discriminator}
+
+    # Printing the models
+    # print(nn.Sequential(encoder,
+    #                     fnet,
+    #                     decoder,
+    #                     asr,
+    #                     discriminator
+    # ))
+
+    # Printing the parameters of all the different modules 
+    [print(f"Number of parameters in {i[0]} in Million is: {DeepSpeech.get_param_size(i[1])/1000000}") for i in models.items()]
+    # exit()
     
     for epoch in range(start_epoch, args.epochs):
         
@@ -212,35 +221,46 @@ if __name__ == '__main__':
             if i == len(train_sampler):
                 break
             
-            inputs, targets, input_percentages, target_sizes, accents = data
             print("train-start")
-            print(torch.tensor(accents).reshape(-1,1))
-            input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
-            print(input_sizes)
 
-            z = encoder(inputs)
+            # Data loading
+            inputs, targets, input_percentages, target_sizes, accents = data
+            print(inputs.shape)
+            input_sizes = input_percentages.mul_(int(inputs.size(3))).type(torch.LongTensor).to(device)
+            inputs = inputs.to(device)
+            accents = torch.tensor(accents).to(device)
+            # print(input_sizes)
+            
+            # Forward pass
+
+            # Encoder and Decoder network
+            z,updated_lengths = encoder(inputs,input_sizes)
             print(z.shape)
             decoder_out = decoder(z)
             print(decoder_out.shape)
 
-            m = fnet(inputs,input_sizes.type(torch.LongTensor))
+            # decoder_loss = dec_loss(decoder_out,inputs)
+
+            # Forget network
+            m = fnet(inputs,input_sizes)
             print(m.shape)
 
+            # Forget Operation
             z_ = z * m
             print(z_.shape)
 
             
-            #discriminator
+            # Discriminator network and it's loss
             discriminator_out = discriminator(z_)
             print(discriminator_out.shape)
-            discriminator_loss = dis_loss(discriminator_out, torch.tensor(accents))
+            discriminator_loss = dis_loss(discriminator_out, accents)
             
-            #asr
-            asr_out, asr_out_sizes = asr(inputs, input_sizes)
+            # Predictor network and it's loss
+            asr_out, asr_out_sizes = asr(z_, updated_lengths)
+            # asr_out, asr_out_sizes = asr(inputs, input_sizes)
             print(asr_out[0].shape, asr_out[-1].shape)
 
             asr_out = asr_out.transpose(0, 1)  # TxNxH
-
             float_out = asr_out.float()  # ensure float32 for loss
             asr_loss = criterion(float_out, targets, asr_out_sizes, target_sizes).to(device)
             asr_loss = asr_loss / inputs.size(0)  # average the loss by minibatch
@@ -249,7 +269,6 @@ if __name__ == '__main__':
             print("train-stop")
             break
             exit()
-            inputs = inputs.to(device)
             
             
 
