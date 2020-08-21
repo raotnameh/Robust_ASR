@@ -51,7 +51,7 @@ class MaskConv(nn.Module):
         super(MaskConv, self).__init__()
         self.seq_module = seq_module
 
-    def forward(self, x, lengths):
+    def forward(self, x, lengths,device):
         """
         :param x: The input of size BxCxDxT
         :param lengths: The actual length of each sequence in the batch
@@ -61,7 +61,7 @@ class MaskConv(nn.Module):
             x = module(x)
             mask = torch.BoolTensor(x.size()).fill_(0)
             if x.is_cuda:
-                mask = mask.cuda()
+                mask = mask.to(device)
             for i, length in enumerate(lengths):
                 length = length.item()
                 if (mask[i].size(2) - length) > 0:
@@ -339,10 +339,10 @@ class Encoder(nn.Module):
             nn.Hardtanh(0, 20, inplace=True)
         ))
 
-    def forward(self,x,lengths):
+    def forward(self,x,lengths,device):
         # x = self.hard_tanh(self.batch_norm_1(self.conv_1(x)))
         # x = self.hard_tanh(self.batch_norm_2(self.conv_2(x)))
-        x, _ = self.conv(x,lengths)
+        x, _ = self.conv(x,lengths,device)
         return x, self.get_seq_lens(lengths)
 
     def get_seq_lens(self, input_length):

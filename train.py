@@ -5,7 +5,7 @@ import random
 import time, math
 import torch
 import torch.nn as nn
-
+from tqdm.auto import tqdm
 import numpy as np
 from warpctc_pytorch import CTCLoss
 
@@ -108,7 +108,7 @@ if __name__ == '__main__':
 
     wer_results = torch.Tensor(args.epochs)
     best_wer = None
-    avg_loss, start_epoch = 0, 0
+    d_avg_loss, p_avg_loss, start_epoch = 0, 0, 0
     
     #Loading the labels
     with open(args.labels_path) as label_file:
@@ -128,7 +128,6 @@ if __name__ == '__main__':
     rnn_type = args.rnn_type.lower()
     assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
     #Decoder used for evaluation
-    decoder = GreedyDecoder(labels)
 
     #Try loading the information from the last checkpoint
     try:
@@ -213,9 +212,11 @@ if __name__ == '__main__':
 
     # Printing the parameters of all the different modules 
     [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
-    
+
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
+        start_epoch_time = time.time()
+        p_counter, d_counter = 0, 0
 
         for i, (data) in enumerate(train_loader):
             if i == len(train_sampler):
@@ -228,15 +229,16 @@ if __name__ == '__main__':
 
             if i%(args.update_rule+1) == 0: #updating the discriminator only
                 accents = torch.tensor(accents).to(device)
-
+                d_counter += 1
                 # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device),device) # Encoder network
                 m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = discriminator(z_) # Discriminator network
-  
-                discriminator_loss = dis_loss(discriminator_out, accents) # Loss
-                loss_value = discriminator_loss.item()
+                # Loss
+                discriminator_loss = dis_loss(discriminator_out, accents) 
+                d_loss = discriminator_loss.item()
+                d_avg_loss += d_loss
 
                 [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 
@@ -245,26 +247,26 @@ if __name__ == '__main__':
                 fnet_optimizer.step()
 
                 [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
+                print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
             else: #random labels for adversarial learning of the predictor network
                 accents = torch.tensor(random.choices(accent,k=len(accents))).to(device)
-
+                p_counter += 1
                 # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device),device) # Encoder network
                 decoder_out = decoder(z) # Decoder network
                 m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = discriminator(z_) # Discriminator network
                 asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
-
-                
                 # Loss
                 # decoder_loss = dec_loss(decoder_out,inputs)
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
                 loss = asr_loss #+ decoder_loss
-                loss_value = loss.item()
+                p_loss = loss.item()
+                p_avg_loss += p_loss
 
                 [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
 
@@ -274,30 +276,68 @@ if __name__ == '__main__':
                 asr_optimizer.step()
 
                 [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
+                print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
+            
+            if i%500 == 499:
+                break
+        d_avg_loss /= d_counter
+        p_avg_loss /= p_counter
+        epoch_time = time.time() - start_epoch_time
+        print('Training Summary Epoch: [{0}]\t'
+              'Time taken (s): {1}\t'
+              'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
 
+        d_avg_loss, p_avg_loss = 0, 0
 
-            avg_loss += loss_value
-            print(f"loss    {loss_value}---------- average loss     {avg_loss/(i+1)}")
-            # measure elapsed time
-
-        avg_loss /= len(train_sampler)
-        # epoch_time = time.time() - start_epoch_time
-        # print('Training Summary Epoch: [{0}]\t'
-        #       'Time taken (s): {1}\t'
-        #       'Average Loss {2}\t'.format(epoch + 1, epoch_time, avg_loss))
-        avg_loss = 0
-
-        # with torch.no_grad():
-        #     wer, cer, output_data = evaluate(test_loader=test_loader,
-        #                                      device=device,
-        #                                      model=model,
-        #                                      decoder=decoder,
-        #                                      target_decoder=decoder)
         
-        # print('Validation Summary Epoch: [{0}]\t'
-        #       'Average WER {wer:.3f}\t'
-        #       'Average CER {cer:.3f}\t'.format(
-        #     epoch + 1, wer=wer, cer=cer))
+        with torch.no_grad():
+            total_cer, total_wer, num_tokens, num_chars = 0, 0, 0, 0
+            length, num = 0, 0
+            for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
+                # Data loading
+                inputs, targets, input_percentages, target_sizes, accents = data
+                input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+                inputs = inputs.to(device)
+
+                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device),device) # Encoder network
+                m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+                z_ = z * m # Forget Operation
+                discriminator_out = discriminator(z_) # Discriminator network
+                asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
+
+                # Predictor metric
+                split_targets = []
+                offset = 0
+                for size in target_sizes:
+                    split_targets.append(targets[offset:offset + size])
+                    offset += size
+                target_decoder = GreedyDecoder(labels)
+                decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
+                target_strings = target_decoder.convert_to_strings(split_targets)
+
+                for x in range(len(target_strings)):
+                    transcript, reference = decoded_output[x][0], target_strings[x][0]
+                    wer_inst = target_decoder.wer(transcript, reference)
+                    cer_inst = target_decoder.cer(transcript, reference)
+                    total_wer += wer_inst
+                    total_cer += cer_inst
+                    num_tokens += len(reference.split())
+                    num_chars += len(reference.replace(' ', ''))
+
+                wer = float(total_wer) / num_tokens
+                cer = float(total_cer) / num_chars
+     
+                # Discriminator metric
+                out , predicted = torch.max(discriminator_out, 1)
+                for j in range(len(accents)):
+                    if accents[j] == predicted[j].item():
+                        num = num + 1
+                length = length + len(accents)
+
+        print('Validation Summary Epoch: [{0}]\t'
+                'Average WER {wer:.3f}\t'
+                'Average CER {cer:.3f}\t'
+                'Discriminator accuracy {acc: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc = num/length *100 ))
 
         
         # if args.checkpoint:
