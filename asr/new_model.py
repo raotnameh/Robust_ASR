@@ -85,6 +85,9 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
             nn.Hardtanh(0, 20, inplace=True),
             nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
             nn.BatchNorm2d(32),
+            nn.Hardtanh(0, 20, inplace=True),
+            nn.Conv2d(32, 64, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
+            nn.BatchNorm2d(64),
             nn.Hardtanh(0, 20, inplace=True)
         ))
 
@@ -94,15 +97,17 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         rnn_input_size = int(math.floor(rnn_input_size + 2 * 20 - 41) / 2 + 1)
         #print(rnn_input_size)
         rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
+        rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
         #print(rnn_input_size)
-        rnn_input_size *= 32
+        rnn_input_size *= 64
         print('input size for TimeDistributed Dense Layer',rnn_input_size)
         fully_connected = nn.Sequential(
             nn.Linear(rnn_input_size, num_classes, bias=False)
         )
 
         self.conv_params = {'conv1':{'time_kernel':11,'stride':2,'padding':5},
-                'conv2':{'time_kernel':11,'stride':1,'padding':5}}
+                'conv2':{'time_kernel':11,'stride':1,'padding':5},
+                'conv3':{'time_kernel':11,'stride':1,'padding':5}}
 
         self.fc = SequenceWise(fully_connected)
 

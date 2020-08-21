@@ -249,9 +249,9 @@ if __name__ == '__main__':
                     new_target += [0]*(new_timesteps-len(new_target))
                     prev = size.item()
                     new_targets.append(new_target)
-
+    
                 new_targets = torch.Tensor(new_targets).to(torch.long).to(device)
-
+    
                 #change either out or targets to match speech
                 #print(input_sizes)
                 #print(target_sizes)
@@ -261,7 +261,7 @@ if __name__ == '__main__':
                 #print(float_out.size())
                 loss = criterion(float_out, new_targets).to(device)
                 loss = loss / inputs.size(0)  # average the loss by minibatch
-                
+                    
                 if math.isnan(loss.item()):
                     continue
 
@@ -271,11 +271,11 @@ if __name__ == '__main__':
                 else:
                     loss_value = loss.item()
 
-                # Check to ensure valid loss was calculated
+                    # Check to ensure valid loss was calculated
                 valid_loss, error = check_loss(loss, loss_value)
                 if valid_loss:
-                    #optimizer.zero_grad()
-                    # compute gradient
+                        #optimizer.zero_grad()
+                        # compute gradient
                     with amp.scale_loss(loss, optimizer) as scaled_loss:
                         scaled_loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
@@ -306,8 +306,10 @@ if __name__ == '__main__':
                     torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                     loss_results=loss_results,
                                                     acc_results=acc_results, avg_loss=avg_loss),file_path)
-                del loss, out, float_out
+                del loss, out, float_out 
+
             except: pass
+
         avg_loss /= len(train_sampler)
 
         epoch_time = time.time() - start_epoch_time
