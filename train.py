@@ -9,7 +9,7 @@ import torch.nn as nn
 import numpy as np
 from warpctc_pytorch import CTCLoss
 
-from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, accents
+from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, accent
 from decoder import GreedyDecoder
 from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
 
@@ -80,7 +80,7 @@ parser.add_argument('--opt-level', type=str)
 parser.add_argument('--keep-batchnorm-fp32', type=str, default=None)
 parser.add_argument('--loss-scale', type=str, default=None)
 parser.add_argument('--weights', default='', help='Continue from checkpoint model')
-parser.add_argument('--out-classes', default=2, type=int,
+parser.add_argument('--update-rule', default=2, type=int,
                     help='out classes of the discriminator')
 
 
@@ -91,6 +91,7 @@ def to_np(x):
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    accent = list(accent.values())
 
     # Set seeds for determinism
     torch.manual_seed(args.seed)
@@ -167,185 +168,158 @@ if __name__ == '__main__':
                         audio_conf=audio_conf,
                         bidirectional=args.bidirectional)
     asr = asr.to(device)
-    asr_parameters = asr.parameters()
-    asr_optimizer = torch.optim.Adam(asr_parameters, lr=args.lr,weight_decay=1e-4,amsgrad=True)
+    asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
     criterion = CTCLoss()
 
     # Encoder and Decoder
     encoder = Encoder()
     encoder = encoder.to(device)
-    encoder_parameters = encoder.parameters()
 
     decoder = Decoder()
     decoder =decoder.to(device)
-    decoder_parameters = decoder.parameters()
     dec_loss = nn.MSELoss()
 
-    ed_optimizer = torch.optim.Adam(list(encoder_parameters)+list(decoder_parameters),
+    ed_optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()),
                                      lr=args.lr,weight_decay=1e-4,amsgrad=True)
 
     # Forget_net
     fnet = ForgetNet()
     fnet = fnet.to(device)
-    fnet_parameters = fnet.parameters()
-    fnet_optimizer = torch.optim.Adam(fnet_parameters, lr=args.lr,weight_decay=1e-4,amsgrad=True)
+    fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
 
     # Discriminator
-    discriminator = DiscimnateNet(classes=len(accents))
+    discriminator = DiscimnateNet(classes=len(accent))
     discriminator = discriminator.to(device)
-    discriminator_parameters = discriminator.parameters()
-    discriminator_optimizer = torch.optim.Adam(discriminator_parameters, lr=args.lr,weight_decay=1e-4,amsgrad=True)
+    discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
     dis_loss = nn.CrossEntropyLoss()
     
     # Models
-    models = {'predictor': asr, 'encoder': encoder, 'decoder': decoder, 'forget_net': fnet, 'discrimator': discriminator}
+    models = {
+                'predictor': [asr, criterion, asr_optimizer],
+                'encoder': [encoder, None, None],
+                'decoder': [decoder, dec_loss, ed_optimizer],
+                'forget_net': [fnet, None, fnet_optimizer],
+                'discrimator': [discriminator, dis_loss, discriminator_optimizer],
+                }
+    [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making gridents zero
 
     # Printing the models
-    # print(nn.Sequential(encoder,
-    #                     fnet,
-    #                     decoder,
-    #                     asr,
-    #                     discriminator
-    # ))
+    print(nn.Sequential(encoder,
+                        fnet,
+                        decoder,
+                        asr,
+                        discriminator
+    ))
 
     # Printing the parameters of all the different modules 
-    [print(f"Number of parameters in {i[0]} in Million is: {DeepSpeech.get_param_size(i[1])/1000000}") for i in models.items()]
-    # exit()
+    [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
     
     for epoch in range(start_epoch, args.epochs):
-        
-        asr.train()
-        start_epoch_time = time.time()
+        [i[0].train() for i in models.values()] # putting all the models in training state
 
         for i, (data) in enumerate(train_loader):
             if i == len(train_sampler):
                 break
-            
-            print("train-start")
 
             # Data loading
             inputs, targets, input_percentages, target_sizes, accents = data
-            print(inputs.shape)
-            input_sizes = input_percentages.mul_(int(inputs.size(3))).type(torch.LongTensor).to(device)
+            input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
             inputs = inputs.to(device)
-            accents = torch.tensor(accents).to(device)
-            # print(input_sizes)
-            
-            # Forward pass
 
-            # Encoder and Decoder network
-            z,updated_lengths = encoder(inputs,input_sizes)
-            print(z.shape)
-            decoder_out = decoder(z)
-            print(decoder_out.shape)
+            if i%(args.update_rule+1) == 0: #updating the discriminator only
+                accents = torch.tensor(accents).to(device)
 
-            # decoder_loss = dec_loss(decoder_out,inputs)
+                # Forward pass
+                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+                z_ = z * m # Forget Operation
+                discriminator_out = discriminator(z_) # Discriminator network
+  
+                discriminator_loss = dis_loss(discriminator_out, accents) # Loss
+                loss_value = discriminator_loss.item()
 
-            # Forget network
-            m = fnet(inputs,input_sizes)
-            print(m.shape)
+                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
+                
+                discriminator_loss.backward()
+                discriminator_optimizer.step()
+                fnet_optimizer.step()
 
-            # Forget Operation
-            z_ = z * m
-            print(z_.shape)
+                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
 
-            
-            # Discriminator network and it's loss
-            discriminator_out = discriminator(z_)
-            print(discriminator_out.shape)
-            discriminator_loss = dis_loss(discriminator_out, accents)
-            
-            # Predictor network and it's loss
-            asr_out, asr_out_sizes = asr(z_, updated_lengths)
-            # asr_out, asr_out_sizes = asr(inputs, input_sizes)
-            print(asr_out[0].shape, asr_out[-1].shape)
+            else: #random labels for adversarial learning of the predictor network
+                accents = torch.tensor(random.choices(accent,k=len(accents))).to(device)
 
-            asr_out = asr_out.transpose(0, 1)  # TxNxH
-            float_out = asr_out.float()  # ensure float32 for loss
-            asr_loss = criterion(float_out, targets, asr_out_sizes, target_sizes).to(device)
-            asr_loss = asr_loss / inputs.size(0)  # average the loss by minibatch
+                # Forward pass
+                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                decoder_out = decoder(z) # Decoder network
+                m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+                z_ = z * m # Forget Operation
+                discriminator_out = discriminator(z_) # Discriminator network
+                asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
 
+                
+                # Loss
+                # decoder_loss = dec_loss(decoder_out,inputs)
+                asr_out = asr_out.transpose(0, 1)  # TxNxH
+                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+                asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
+                loss = asr_loss #+ decoder_loss
+                loss_value = loss.item()
 
-            print("train-stop")
-            break
-            exit()
-            
-            
+                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
 
-            out, output_sizes = model(inputs, input_sizes)
-            out = out.transpose(0, 1)  # TxNxH
-
-            float_out = out.float()  # ensure float32 for loss
-            loss = criterion(float_out, targets, output_sizes, target_sizes).to(device)
-            loss = loss / inputs.size(0)  # average the loss by minibatch
-            
-            if math.isnan(loss.item()):
-                continue
-
-            loss_value = loss.item()
-
-            # Check to ensure valid loss was calculated
-            valid_loss, error = check_loss(loss, loss_value)
-            if valid_loss:
-                # compute gradient
                 loss.backward()
-                if i%2 == 0 and i != 0: #Num of steps to combine for the grad update.
-                    print('optimizer step')
-                    optimizer.step()
-                    optimizer.zero_grad()
-            else:
-                print(error)
-                print('Skipping grad update')
-                loss_value = 0
+                ed_optimizer.step()
+                fnet_optimizer.step()
+                asr_optimizer.step()
+
+                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
+
 
             avg_loss += loss_value
+            print(f"loss    {loss_value}---------- average loss     {avg_loss/(i+1)}")
             # measure elapsed time
-            if not args.silent:
-                print('Epoch: [{0}][{1}/{2}]\t'
-                      'Loss: {3} ({4})\t'.format(
-                    (epoch + 1), (i + 1), len(train_sampler),loss_value, avg_loss))
 
         avg_loss /= len(train_sampler)
-        break
-        epoch_time = time.time() - start_epoch_time
-        print('Training Summary Epoch: [{0}]\t'
-              'Time taken (s): {1}\t'
-              'Average Loss {2}\t'.format(epoch + 1, epoch_time, avg_loss))
+        # epoch_time = time.time() - start_epoch_time
+        # print('Training Summary Epoch: [{0}]\t'
+        #       'Time taken (s): {1}\t'
+        #       'Average Loss {2}\t'.format(epoch + 1, epoch_time, avg_loss))
         avg_loss = 0
 
-        with torch.no_grad():
-            wer, cer, output_data = evaluate(test_loader=test_loader,
-                                             device=device,
-                                             model=model,
-                                             decoder=decoder,
-                                             target_decoder=decoder)
+        # with torch.no_grad():
+        #     wer, cer, output_data = evaluate(test_loader=test_loader,
+        #                                      device=device,
+        #                                      model=model,
+        #                                      decoder=decoder,
+        #                                      target_decoder=decoder)
         
-        print('Validation Summary Epoch: [{0}]\t'
-              'Average WER {wer:.3f}\t'
-              'Average CER {cer:.3f}\t'.format(
-            epoch + 1, wer=wer, cer=cer))
+        # print('Validation Summary Epoch: [{0}]\t'
+        #       'Average WER {wer:.3f}\t'
+        #       'Average CER {cer:.3f}\t'.format(
+        #     epoch + 1, wer=wer, cer=cer))
 
         
-        if args.checkpoint:
-            file_path = '%s/deepspeech_%d.pth' % (save_folder, epoch + 1)
-            try:torch.save(DeepSpeech.serialize(model.module, epoch=epoch,
-                                wer_results=wer),file_path)
-            except: torch.save(DeepSpeech.serialize(model, epoch=epoch,
-                                wer_results=wer),file_path)
+        # if args.checkpoint:
+        #     file_path = '%s/deepspeech_%d.pth' % (save_folder, epoch + 1)
+        #     try:torch.save(DeepSpeech.serialize(model.module, epoch=epoch,
+        #                         wer_results=wer),file_path)
+        #     except: torch.save(DeepSpeech.serialize(model, epoch=epoch,
+        #                         wer_results=wer),file_path)
         
-        # anneal lr
-        for g in asr_optimizer.param_groups:
-            g['lr'] = g['lr'] / args.learning_anneal
-        print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
+        # # anneal lr
+        # for g in asr_optimizer.param_groups:
+        #     g['lr'] = g['lr'] / args.learning_anneal
+        # print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
-        if best_wer is None or best_wer > wer:
-            print("Found better validated model, saving to %s" % args.model_path)
-            try:torch.save(DeepSpeech.serialize(model.module, epoch=epoch,wer_results=wer),
-                       args.model_path)
-            except:torch.save(DeepSpeech.serialize(model, epoch=epoch,wer_results=wer),
-                       args.model_path)
-            best_wer = wer
+        # if best_wer is None or best_wer > wer:
+        #     print("Found better validated model, saving to %s" % args.model_path)
+        #     try:torch.save(DeepSpeech.serialize(model.module, epoch=epoch,wer_results=wer),
+        #                args.model_path)
+        #     except:torch.save(DeepSpeech.serialize(model, epoch=epoch,wer_results=wer),
+        #                args.model_path)
+        #     best_wer = wer
 
-        if not args.no_shuffle:
-            print("Shuffling batches...")
-            train_sampler.shuffle(epoch)
+        # if not args.no_shuffle:
+        #     print("Shuffling batches...")
+        #     train_sampler.shuffle(epoch)

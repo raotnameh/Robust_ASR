@@ -18,7 +18,7 @@ from .spec_augment import spec_augment
 
 windows = {'hamming': scipy.signal.hamming, 'hann': scipy.signal.hann, 'blackman': scipy.signal.blackman,
            'bartlett': scipy.signal.bartlett}
-accents = {'EN':1, 'US':2, 'CA':3, 'AU':4, 'IN':5, 'NZ':6, 'WE':7, 'IR':8, 'SC':9}
+accent = {'EN':0, 'US':1, 'CA':2, 'AU':3, 'IN':4, 'NZ':5, 'WE':6, 'IR':7, 'SC':8}
 
 def load_audio(path):
     sample_rate, sound = read(path)
@@ -172,7 +172,7 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         #     print("using accents")
         #     accentData = accents[sample[2]]
         #     return spect,transcript,accentData
-        return spect, transcript,accents[sample[2]]
+        return spect, transcript,accent[sample[2]]
 
     def parse_transcript(self, transcript_path):
         with open(transcript_path, 'r', encoding='utf8') as transcript_file:
