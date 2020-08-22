@@ -109,7 +109,7 @@ if __name__ == '__main__':
 
     wer_results = torch.Tensor(args.epochs)
     best_wer = None
-    d_avg_loss, p_avg_loss, start_epoch = 0, 0, 0
+    d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch = 0, 0, 0, 0
     
     #Loading the labels
     with open(args.labels_path) as label_file:
@@ -230,10 +230,12 @@ if __name__ == '__main__':
             inputs = inputs.to(device)
 
             if i%(args.update_rule+1) == 0: #updating the discriminator only
+
+                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 accents = torch.tensor(accents).to(device)
                 d_counter += 1
                 # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device),device) # Encoder network
+                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
                 m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = discriminator(z_) # Discriminator network
@@ -241,21 +243,20 @@ if __name__ == '__main__':
                 discriminator_loss = dis_loss(discriminator_out, accents) 
                 d_loss = discriminator_loss.item()
                 d_avg_loss += d_loss
-
-                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 
                 discriminator_loss.backward()
                 discriminator_optimizer.step()
-                fnet_optimizer.step()
 
                 [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
             else: #random labels for adversarial learning of the predictor network
+                
+                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 accents = torch.tensor(random.choices(accent,k=len(accents))).to(device)
                 p_counter += 1
                 # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device),device) # Encoder network
+                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
                 decoder_out = decoder(z) # Decoder network
                 m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
                 z_ = z * m # Forget Operation
@@ -263,6 +264,10 @@ if __name__ == '__main__':
                 asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
                 # Loss
                 # decoder_loss = dec_loss(decoder_out,inputs)
+                discriminator_loss = dis_loss(discriminator_out, accents)
+                p_d_loss = discriminator_loss.item()
+                p_d_avg_loss += p_d_loss
+
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
@@ -270,18 +275,18 @@ if __name__ == '__main__':
                 p_loss = loss.item()
                 p_avg_loss += p_loss
 
-                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
-
+                discriminator_loss.backward(retain_graph=True)
+                ed_optimizer.zero_grad()
                 loss.backward()
                 ed_optimizer.step()
-                fnet_optimizer.step()
                 asr_optimizer.step()
+                fnet_optimizer.step()
 
                 [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
-                print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
-            
-            #if i%10 == 9:
-                   # break
+                print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
+        
+            # if i%10 == 9:
+            #        break
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
@@ -298,7 +303,7 @@ if __name__ == '__main__':
                 input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
                 inputs = inputs.to(device)
 
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device),device) # Encoder network
+                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
                 m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = discriminator(z_) # Discriminator network
@@ -333,8 +338,8 @@ if __name__ == '__main__':
                         num = num + 1
                 length = length + len(accents)
 
-                #if i%10 == 9:
-                   #break
+                # if i%10 == 9:
+                #    break
 
         print('Validation Summary Epoch: [{0}]\t'
                 'Average WER {wer:.3f}\t'
@@ -347,7 +352,7 @@ if __name__ == '__main__':
         with open("loss.txt", "w") as f:
             f.write(a)
 
-        d_avg_loss, p_avg_loss = 0, 0
+        d_avg_loss, p_avg_loss, p_d_avg_loss = 0, 0, 0
         
         if args.checkpoint:
             for k,v in models.items():
