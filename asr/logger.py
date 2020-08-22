@@ -42,7 +42,7 @@ class TensorBoardLogger(object):
         self.log_params = log_params
 
     def update(self, epoch, values, parameters=None):
-        loss, acc = values["loss_results"][epoch + 1], values["acc_results"][epoch + 1]
+        loss, acc = values["loss_results"][epoch], values["acc_results"][epoch]
         values = {
             'Avg Train Loss': loss,
             'Avg Acc': acc
@@ -51,6 +51,7 @@ class TensorBoardLogger(object):
         if self.log_params:
             for tag, value in parameters():
                 tag = tag.replace('.', '/')
+                print(value)
                 self.tensorboard_writer.add_histogram(tag, to_np(value), epoch + 1)
                 self.tensorboard_writer.add_histogram(tag + '/grad', to_np(value.grad), epoch + 1)
 

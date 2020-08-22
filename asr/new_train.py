@@ -3,6 +3,8 @@ import json
 import os
 import random
 import time, math
+import sys
+import traceback
 
 import torch.nn as nn
 import numpy as np
@@ -105,7 +107,7 @@ class AverageMeter(object):
 
 if __name__ == '__main__':
     args = parser.parse_args()
-
+    args.num_workers = 2
     # Set seeds for determinism
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -125,7 +127,8 @@ if __name__ == '__main__':
         main_proc = args.rank == 0  # Only the first proc should save models
     save_folder = args.save_folder
     os.makedirs(save_folder, exist_ok=True)  # Ensure save folder exists
-    loss_results, acc_results = torch.Tensor(args.epochs), torch.Tensor(args.epochs)
+    loss_results, acc_results = torch.zeros(args.epochs), torch.zeros(args.epochs)
+    #print(loss_results)
     best_acc = None
     if main_proc and args.visdom:
         visdom_logger = VisdomLogger(args.id, args.epochs)
@@ -239,13 +242,13 @@ if __name__ == '__main__':
                 #print(target_sizes)
                 for idx,size in enumerate(target_sizes.data.cpu().numpy()):
                     new_size = size.item()
-                    for key in conv_params:
-                        params = conv_params[key]
-                        new_size = int((new_size + 2*params['padding'] - params['time_kernel'])/params['stride'] + 1)
+                    #for key in conv_params:
+                    #    params = conv_params[key]
+                    #    new_size = int((new_size + 2*params['padding'] - params['time_kernel'])/params['stride'] + 1)
                     prev = 0
                     time_dur = time_durs.data.cpu().numpy()[idx]
-                    new_target = targets.data.numpy()[prev:size.item()]
-                    new_target = shorten_target(new_target,new_size,time_dur)
+                    new_target = list(targets.data.numpy()[prev:size.item()])
+                    #new_target = shorten_target(new_target,new_size,time_dur)
                     new_target += [0]*(new_timesteps-len(new_target))
                     prev = size.item()
                     new_targets.append(new_target)
@@ -253,7 +256,7 @@ if __name__ == '__main__':
                 new_targets = torch.Tensor(new_targets).to(torch.long).to(device)
     
                 #change either out or targets to match speech
-                #print(input_sizes)
+                #print(output_sizes)
                 #print(target_sizes)
                 #print(out.size())
                 #print(new_targets.size())
@@ -308,7 +311,7 @@ if __name__ == '__main__':
                                                     acc_results=acc_results, avg_loss=avg_loss),file_path)
                 del loss, out, float_out 
 
-            except: pass
+            except Exception as err: print(output_sizes)
 
         avg_loss /= len(train_sampler)
 
@@ -322,6 +325,7 @@ if __name__ == '__main__':
             acc, output_data = evaluate_acc(test_loader=test_loader,
                                             device=device,
                                             model=model)
+        print(loss_results)
         loss_results[epoch] = avg_loss
         acc_results[epoch] = acc
         print('Validation Summary Epoch: [{0}]\t'
@@ -331,6 +335,7 @@ if __name__ == '__main__':
             'loss_results': loss_results,
             'acc_results': acc_results
             }
+        #print(values['acc_results'])
         if args.visdom and main_proc:
             visdom_logger.update(epoch, values)
         if args.tensorboard and main_proc:

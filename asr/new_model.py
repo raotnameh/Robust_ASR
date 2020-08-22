@@ -80,7 +80,7 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         num_classes = len(self.labels)
 
         self.conv = MaskConv(nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
+            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 1), padding=(20, 5)),
             nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
             nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
@@ -101,11 +101,14 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         #print(rnn_input_size)
         rnn_input_size *= 64
         print('input size for TimeDistributed Dense Layer',rnn_input_size)
+
         fully_connected = nn.Sequential(
-            nn.Linear(rnn_input_size, num_classes, bias=False)
+            nn.Linear(rnn_input_size, 128, bias=False),
+            nn.LeakyReLU(),
+            nn.Linear(128, num_classes, bias=False)
         )
 
-        self.conv_params = {'conv1':{'time_kernel':11,'stride':2,'padding':5},
+        self.conv_params = {'conv1':{'time_kernel':11,'stride':1,'padding':5},
                 'conv2':{'time_kernel':11,'stride':1,'padding':5},
                 'conv3':{'time_kernel':11,'stride':1,'padding':5}}
 
@@ -115,7 +118,9 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
     
     def forward(self,x,lengths):
         lengths = lengths.cpu().int()
-        #print(x.shape)
+        #print(x.shape)i
+        output_lengths = self.get_seq_lens(lengths)
+
         x, _ = self.conv(x, lengths)
 
         sizes = x.size()
@@ -123,13 +128,28 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])  # Collapse feature dimension
         #print(x.shape)
         x = x.transpose(1, 2).transpose(0, 1).contiguous()  # TxNxH
+
+        #x = nn.utils.rnn.pack_padded_sequence(x, output_lengths)
         #print(x.shape)
         x = self.fc(x)
         x = x.transpose(0, 1)
         # identity in training mode, softmax in eval mode
         x = self.inference_softmax(x)
-        return x, lengths
+        return x, output_lengths
     
+    def get_seq_lens(self, input_length):
+        """
+        Given a 1D Tensor or Variable containing integer sequence lengths, return a 1D tensor or variable
+        containing the size sequences that will be output by the network.
+        :param input_length: 1D Tensor
+        :return: 1D Tensor scaled by model
+        """
+        seq_len = input_length
+        for m in self.conv.modules():
+            if type(m) == nn.modules.conv.Conv2d:
+                seq_len = ((seq_len + 2 * m.padding[1] - m.dilation[1] * (m.kernel_size[1] - 1) - 1) // m.stride[1] + 1)
+        return seq_len.int()
+
     @classmethod
     def load_model(cls, path):
         package = torch.load(path, map_location=lambda storage, loc: storage)
