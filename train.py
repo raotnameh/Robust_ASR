@@ -13,7 +13,7 @@ from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampl
 from decoder import GreedyDecoder
 from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
 
-from utils import reduce_tensor, check_loss, decoder_loss
+from utils import reduce_tensor, check_loss, Decoder_loss
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--train-manifest', metavar='DIR',
@@ -177,7 +177,7 @@ if __name__ == '__main__':
 
     decoder = Decoder()
     decoder =decoder.to(device)
-    #dec_loss = 
+    dec_loss = Decoder_loss(nn.MSELoss())
 
     ed_optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()),
                                      lr=args.lr,weight_decay=1e-4,amsgrad=True)
@@ -263,7 +263,7 @@ if __name__ == '__main__':
                 discriminator_out = discriminator(z_) # Discriminator network
                 asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
                 # Loss
-                # decoder_loss = decoder_loss(decoder_out,inputs)
+                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes)
                 discriminator_loss = dis_loss(discriminator_out, accents)
                 p_d_loss = discriminator_loss.item()
                 p_d_avg_loss += p_d_loss
@@ -271,7 +271,7 @@ if __name__ == '__main__':
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                loss = asr_loss #+ decoder_loss
+                loss = asr_loss + decoder_loss
                 p_loss = loss.item()
                 p_avg_loss += p_loss
 
