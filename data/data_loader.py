@@ -18,7 +18,7 @@ from .spec_augment import spec_augment
 
 windows = {'hamming': scipy.signal.hamming, 'hann': scipy.signal.hann, 'blackman': scipy.signal.blackman,
            'bartlett': scipy.signal.bartlett}
-accent = {'EN':0, 'US':1, 'CA':2, 'AU':3, 'IN':4, 'NZ':5, 'WE':6, 'IR':7, 'SC':8}
+accent = {'EN':0, 'US':1, 'CA':2, 'AU':3, 'WE':4, 'IR':5, 'SC':6}
 
 def load_audio(path):
     sample_rate, sound = read(path)
