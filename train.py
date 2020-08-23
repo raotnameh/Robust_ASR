@@ -13,7 +13,7 @@ from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampl
 from decoder import GreedyDecoder
 from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
 
-from utils import reduce_tensor, check_loss
+from utils import reduce_tensor, check_loss, decoder_loss
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--train-manifest', metavar='DIR',
@@ -177,7 +177,7 @@ if __name__ == '__main__':
 
     decoder = Decoder()
     decoder =decoder.to(device)
-    dec_loss = nn.MSELoss()
+    #dec_loss = 
 
     ed_optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()),
                                      lr=args.lr,weight_decay=1e-4,amsgrad=True)
@@ -247,7 +247,7 @@ if __name__ == '__main__':
                 discriminator_loss.backward()
                 discriminator_optimizer.step()
 
-                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
+                #[i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
             else: #random labels for adversarial learning of the predictor network
@@ -263,7 +263,7 @@ if __name__ == '__main__':
                 discriminator_out = discriminator(z_) # Discriminator network
                 asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
                 # Loss
-                # decoder_loss = dec_loss(decoder_out,inputs)
+                # decoder_loss = decoder_loss(decoder_out,inputs)
                 discriminator_loss = dis_loss(discriminator_out, accents)
                 p_d_loss = discriminator_loss.item()
                 p_d_avg_loss += p_d_loss
@@ -282,7 +282,7 @@ if __name__ == '__main__':
                 asr_optimizer.step()
                 fnet_optimizer.step()
 
-                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
+                #[i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
         
             # if i%10 == 9:

@@ -38,3 +38,22 @@ def load_model(device, model_path, use_half):
     if use_half:
         model = model.half()
     return model
+
+def decoder_loss(target, output, WIDTHS, criteria):
+
+    #create mask for padded instances
+    mask = torch.arange(max(WIDTHS)).expand(len(WIDTHS), max(WIDTHS)) < WIDTHS.unsqueeze(1)
+    mask = mask.unsqueeze(1).unsqueeze(2)
+    mask = torch.repeat_interleave(mask, target.shape[2], 2)
+
+    #limit output to input shape
+    output_inter = output[:,:,:target.shape[2],:target.shape[3]]
+
+    #do element-wise multiplication to zero padded instances
+    outputs = output_inter*mask
+
+    #calculate loss
+    loss_ = criteria(outputs, target)
+
+    return loss_
+
