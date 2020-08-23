@@ -229,7 +229,7 @@ if __name__ == '__main__':
 
             if args.train_asr: # Only trainig the ASR component
                 
-                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
+                [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
                 p_counter += 1
                 # Forward pass
                 z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
@@ -251,60 +251,62 @@ if __name__ == '__main__':
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
 
-            if i%(args.update_rule+1) != 0: #updating the discriminator only
+            for k in range(args.update_rule+1):
 
-                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
-                accents = torch.tensor(accents).to(device)
-                d_counter += 1
-                # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
-                z_ = z * m # Forget Operation
-                discriminator_out = discriminator(z_) # Discriminator network
-                # Loss
-                discriminator_loss = dis_loss(discriminator_out, accents) 
-                d_loss = discriminator_loss.item()
-                d_avg_loss += d_loss
-                
-                discriminator_loss.backward()
-                discriminator_optimizer.step()
+                if k%(args.update_rule+1) != 0: #updating the discriminator only    
 
-                print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
+                    [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+                    accents = torch.tensor(accents).to(device)
+                    d_counter += 1
+                    # Forward pass
+                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                    m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+                    z_ = z * m # Forget Operation
+                    discriminator_out = discriminator(z_) # Discriminator network
+                    # Loss
+                    discriminator_loss = dis_loss(discriminator_out, accents) 
+                    d_loss = discriminator_loss.item()
+                    d_avg_loss += d_loss
+                    
+                    discriminator_loss.backward()
+                    discriminator_optimizer.step()
 
-            else: #random labels for adversarial learning of the predictor network
-                
-                [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
-                accents = torch.tensor(random.choices(accent,k=len(accents))).to(device)
-                p_counter += 1
-                # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                decoder_out = decoder(z) # Decoder network
-                m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
-                z_ = z * m # Forget Operation
-                discriminator_out = discriminator(z_) # Discriminator network
-                asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
-                # Loss
-                discriminator_loss = dis_loss(discriminator_out, accents)
-                p_d_loss = discriminator_loss.item()
-                p_d_avg_loss += p_d_loss
+                    print(f"Epoch: [{epoch+1}][{i+1,k}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
-                asr_out = asr_out.transpose(0, 1)  # TxNxH
-                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
-                asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
-                loss = asr_loss + decoder_loss
-                p_loss = loss.item()
-                p_avg_loss += p_loss
+                else: #random labels for adversarial learning of the predictor network
+                    
+                    [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+                    accents = torch.tensor(random.choices(accent,k=len(accents))).to(device)
+                    p_counter += 1
+                    # Forward pass
+                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                    decoder_out = decoder(z) # Decoder network
+                    m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+                    z_ = z * m # Forget Operation
+                    discriminator_out = discriminator(z_) # Discriminator network
+                    asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
+                    # Loss
+                    discriminator_loss = dis_loss(discriminator_out, accents)
+                    p_d_loss = discriminator_loss.item()
+                    p_d_avg_loss += p_d_loss
 
-                discriminator_loss.backward(retain_graph=True)
-                ed_optimizer.zero_grad()
-                loss.backward()
-                ed_optimizer.step()
-                asr_optimizer.step()
-                fnet_optimizer.step()
+                    asr_out = asr_out.transpose(0, 1)  # TxNxH
+                    asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+                    asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
+                    decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
+                    loss = asr_loss + decoder_loss
+                    p_loss = loss.item()
+                    p_avg_loss += p_loss
 
-                print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
-        
+                    discriminator_loss.backward(retain_graph=True)
+                    ed_optimizer.zero_grad()
+                    loss.backward()
+                    ed_optimizer.step()
+                    asr_optimizer.step()
+                    fnet_optimizer.step()
+
+                    print(f"Epoch: [{epoch+1}][{i+1,k}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
+            
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
@@ -400,7 +402,3 @@ if __name__ == '__main__':
         if not args.no_shuffle:
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
-# Training Summary Epoch: [1]     Time taken (s): 193.08977723121643      D/P average Loss 1.7909, 133.1424
-# 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 143/143 [00:41<00:00,  3.45it/s]
-# Validation Summary Epoch: [1]   Average WER 1.053       Average CER 0.732       Discriminator accuracy  55.517
-# Epoch: [2][1/3862]                                       Discriminator Loss: 1.7652 (1.7652)
