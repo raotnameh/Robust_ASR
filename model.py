@@ -361,8 +361,8 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self):
         super(Decoder, self).__init__()
-        self.trans_conv_1 = nn.ConvTranspose2d(32, 32, kernel_size=(21, 11), stride=(2,1), padding = (10,5))
-        self.trans_conv_2 = nn.ConvTranspose2d(32, 1, kernel_size=(41, 11), stride=(2,2), padding = (20,5),  output_padding = (0,1))
+        self.trans_conv_1 = nn.ConvTranspose2d(32, 32, kernel_size=(21, 11), stride=(2,1), padding = (10,5), output_padding = (1,0))
+        self.trans_conv_2 = nn.ConvTranspose2d(32, 1, kernel_size=(41, 11), stride=(2,2), padding = (20,5),  output_padding = (1,1))
         self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
 
     def forward(self,x):

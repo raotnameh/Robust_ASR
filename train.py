@@ -229,7 +229,8 @@ if __name__ == '__main__':
             input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
             inputs = inputs.to(device)
 
-            if i%(args.update_rule+1) == 0: #updating the discriminator only
+            
+            if i%(args.update_rule+1) != 0: #updating the discriminator only
 
                 [i[-1].zero_grad() for i in models.values() if i[-1] is not None] #making graidents zero
                 accents = torch.tensor(accents).to(device)
