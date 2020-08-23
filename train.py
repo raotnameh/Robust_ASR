@@ -317,7 +317,7 @@ if __name__ == '__main__':
         with torch.no_grad():
             total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
             conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
-            tps, fps, tns, fns = np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
+            tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
 
             #Decoder used for evaluation
             target_decoder = GreedyDecoder(labels)
