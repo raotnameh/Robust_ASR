@@ -268,9 +268,9 @@ if __name__ == '__main__':
                 p_d_avg_loss += p_d_loss
 
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
-                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes)
+                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes)
+                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
                 loss = asr_loss + decoder_loss
                 p_loss = loss.item()
                 p_avg_loss += p_loss
