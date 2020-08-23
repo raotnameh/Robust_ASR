@@ -80,7 +80,7 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         num_classes = len(self.labels)
 
         self.conv = MaskConv(nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 1), padding=(20, 5)),
+            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
             nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
             nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
@@ -108,7 +108,7 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
             nn.Linear(128, num_classes, bias=False)
         )
 
-        self.conv_params = {'conv1':{'time_kernel':11,'stride':1,'padding':5},
+        self.conv_params = {'conv1':{'time_kernel':11,'stride':2,'padding':5},
                 'conv2':{'time_kernel':11,'stride':1,'padding':5},
                 'conv3':{'time_kernel':11,'stride':1,'padding':5}}
 
