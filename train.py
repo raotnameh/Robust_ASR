@@ -263,7 +263,6 @@ if __name__ == '__main__':
                 discriminator_out = discriminator(z_) # Discriminator network
                 asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
                 # Loss
-                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes)
                 discriminator_loss = dis_loss(discriminator_out, accents)
                 p_d_loss = discriminator_loss.item()
                 p_d_avg_loss += p_d_loss
@@ -271,6 +270,7 @@ if __name__ == '__main__':
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
+                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes)
                 loss = asr_loss + decoder_loss
                 p_loss = loss.item()
                 p_avg_loss += p_loss
