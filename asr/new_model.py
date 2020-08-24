@@ -80,14 +80,17 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         num_classes = len(self.labels)
 
         self.conv = MaskConv(nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
+            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),#320-->160
             nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
+            nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),#160-->80
             nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(32, 64, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
+            nn.Conv2d(32, 64, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),#80-->40
             nn.BatchNorm2d(64),
+            nn.Hardtanh(0, 20, inplace=True),
+            nn.Conv2d(64, 128, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),#40-->20
+            nn.BatchNorm2d(128),
             nn.Hardtanh(0, 20, inplace=True)
         ))
 
@@ -98,8 +101,9 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         #print(rnn_input_size)
         rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
         rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
+        rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
         #print(rnn_input_size)
-        rnn_input_size *= 64
+        rnn_input_size *= 128 
         print('input size for TimeDistributed Dense Layer',rnn_input_size)
 
         fully_connected = nn.Sequential(
