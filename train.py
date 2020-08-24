@@ -287,9 +287,18 @@ if __name__ == '__main__':
 
             # Random labels for adversarial learning of the predictor network               
             [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
-
-            accents = torch.tensor(random.choices(accent,k=len(accents))).to(device)
             p_counter += 1
+            # Shuffling the elements of alist s.t. elements are not same at the same indices
+            dummy = [] 
+            for i in accents:
+                while True:
+                    d = random.randint(0,len(accent)-1)
+                    if i != d:
+                        dummy.append(d)
+                        break
+            accents = torch.tensor(dummy).to(device)
+            
+
             # Forward pass
             z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
             decoder_out = decoder(z) # Decoder network
