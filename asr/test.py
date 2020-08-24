@@ -81,6 +81,6 @@ if __name__ == '__main__':
                                      verbose=args.verbose,
                                      half=args.half)
 
-    print('Test Summary \tAverage WER {acc:.3f}\t'.format(acc=acc)
+    print('Test Summary \tAverage WER {acc:.3f}\t'.format(acc=acc))
     if args.save_output is not None:
         torch.save(output_data, args.save_output)
