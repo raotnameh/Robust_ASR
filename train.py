@@ -147,13 +147,19 @@ if __name__ == '__main__':
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
                                        spec_augment=args.spec_augment)
+    disc_train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
+                                       normalize=True, speed_volume_perturb=args.augment,
+                                       spec_augment=args.spec_augment)
     test_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.val_manifest, labels=labels,
                                       normalize=True, speed_volume_perturb=False, spec_augment=False)
 
     train_sampler = BucketingSampler(train_dataset, batch_size=args.batch_size)
+    disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_size)
 
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler)
+    disc_train_loader = AudioDataLoader(disc_train_dataset,
+                                   num_workers=args.num_workers, batch_sampler=disc_train_sampler)
     test_loader = AudioDataLoader(test_dataset, batch_size=int(1.5*args.batch_size),
                                   num_workers=args.num_workers)
 
@@ -251,61 +257,67 @@ if __name__ == '__main__':
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
 
-            for k in range(args.update_rule+1):
+            disc_train_sampler.shuffle(start_epoch)
+            for k, (data_) in enumerate(disc_train_loader): #updating the discriminator only 
+                if k == args.update_rule: break 
+                
+                d_counter += 1
+                [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
 
-                if k%(args.update_rule+1) != 0: #updating the discriminator only    
+                # Data loading
+                inputs_, targets_, input_percentages_, target_sizes_, accents_ = data_
+                input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
+                inputs_ = inputs_.to(device)
+                accents_ = torch.tensor(accents_).to(device)
+                # Forward pass
+                z,updated_lengths = encoder(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Encoder network
+                m = fnet(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Forget network
+                z_ = z * m # Forget Operation
+                discriminator_out = discriminator(z_) # Discriminator network
+                # Loss
+                discriminator_loss = dis_loss(discriminator_out, accents_) 
+                d_loss = discriminator_loss.item()
+                d_avg_loss += d_loss
+                
+                discriminator_loss.backward()
+                discriminator_optimizer.step()
 
-                    [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
-                    accents = torch.tensor(accents).to(device)
-                    d_counter += 1
-                    # Forward pass
-                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                    m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
-                    z_ = z * m # Forget Operation
-                    discriminator_out = discriminator(z_) # Discriminator network
-                    # Loss
-                    discriminator_loss = dis_loss(discriminator_out, accents) 
-                    d_loss = discriminator_loss.item()
-                    d_avg_loss += d_loss
-                    
-                    discriminator_loss.backward()
-                    discriminator_optimizer.step()
+                print(f"Epoch: [{epoch+1}][{i+1,k}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
-                    print(f"Epoch: [{epoch+1}][{i+1,k}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
-                else: #random labels for adversarial learning of the predictor network
-                    
-                    [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
-                    accents = torch.tensor(random.choices(accent,k=len(accents))).to(device)
-                    p_counter += 1
-                    # Forward pass
-                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                    decoder_out = decoder(z) # Decoder network
-                    m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
-                    z_ = z * m # Forget Operation
-                    discriminator_out = discriminator(z_) # Discriminator network
-                    asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
-                    # Loss
-                    discriminator_loss = dis_loss(discriminator_out, accents)
-                    p_d_loss = discriminator_loss.item()
-                    p_d_avg_loss += p_d_loss
+            # Random labels for adversarial learning of the predictor network               
+            
+            [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+            accents = torch.tensor(random.choices(accent,k=len(accents))).to(device)
+            p_counter += 1
+            # Forward pass
+            z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+            decoder_out = decoder(z) # Decoder network
+            m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+            z_ = z * m # Forget Operation
+            discriminator_out = discriminator(z_) # Discriminator network
+            asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
+            # Loss
+            discriminator_loss = dis_loss(discriminator_out, accents)
+            p_d_loss = discriminator_loss.item()
+            p_d_avg_loss += p_d_loss
 
-                    asr_out = asr_out.transpose(0, 1)  # TxNxH
-                    asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
-                    asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                    decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
-                    loss = asr_loss + decoder_loss
-                    p_loss = loss.item()
-                    p_avg_loss += p_loss
+            asr_out = asr_out.transpose(0, 1)  # TxNxH
+            asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+            asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
+            decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
+            loss = asr_loss + decoder_loss
+            p_loss = loss.item()
+            p_avg_loss += p_loss
 
-                    discriminator_loss.backward(retain_graph=True)
-                    ed_optimizer.zero_grad()
-                    loss.backward()
-                    ed_optimizer.step()
-                    asr_optimizer.step()
-                    fnet_optimizer.step()
+            discriminator_loss.backward(retain_graph=True)
+            ed_optimizer.zero_grad()
+            loss.backward()
+            ed_optimizer.step()
+            asr_optimizer.step()
+            fnet_optimizer.step()
 
-                    print(f"Epoch: [{epoch+1}][{i+1,k}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
+            print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
             
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
@@ -387,8 +399,9 @@ if __name__ == '__main__':
 
         
         # anneal lr
-        for g in asr_optimizer.param_groups:
-            g['lr'] = g['lr'] / args.learning_anneal
+        for j in models.values():
+            for g in j[-1].param_groups:
+                g['lr'] = g['lr'] / args.learning_anneal
         print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
         # if best_wer is None or best_wer > wer:
