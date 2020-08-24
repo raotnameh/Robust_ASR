@@ -214,7 +214,7 @@ if __name__ == '__main__':
 
     # Printing the parameters of all the different modules 
     [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
-    a = f"epoch,wer,cer,mic_accuracy,mic_precision,mic_recall,mic_f1,d_avg_loss,p_avg_loss\n"
+    a = f"epoch,wer,cer,accuracy,d_avg_loss, p_avg_loss\n"
     eps = 0.0000000001 # epsilon value
     
     for epoch in range(start_epoch, args.epochs):
@@ -328,9 +328,7 @@ if __name__ == '__main__':
 
         with torch.no_grad():
             total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
-            conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
-            tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
-
+            length, num = eps, eps
             #Decoder used for evaluation
             target_decoder = GreedyDecoder(labels)
             for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
@@ -375,20 +373,22 @@ if __name__ == '__main__':
                 cer = float(total_cer) / num_chars
      
                 if not args.train_asr:
-                    # Discriminator metrics: fill in the confusion matrix.
-                    out, predicted = torch.max(discriminator_out, 1)
+                    # Discriminator metric
+                    out , predicted = torch.max(discriminator_out, 1)
                     for j in range(len(accents)):
-                        conf_mat[accents[j], predicted[j].item()] += 1
+                        if accents[j] == predicted[j].item():
+                            num = num + 1
+                    length = length + len(accents)
 
-        # Discriminator metrics: compute metrics using confustion metrics.
-        for acc_type in range(len(accent)):
-            tps[acc_type] = conf_mat[acc_type, acc_type]
-            fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
-            fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
-            tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
-        macro_precision, macro_recall, macro_accuracy = np.mean(tps/(tps+fps)), np.mean(tps/(fns+fps)), np.mean((tps+tns)/(tps+fps+fns+tns))
-        micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+fps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
-        micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
+                    # Discriminator metrics: compute metrics using confustion metrics.
+                    for acc_type in range(len(accent)):
+                        tps[acc_type] = conf_mat[acc_type, acc_type]
+                        fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
+                        fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
+                        tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
+                    macro_precision, macro_recall, macro_accuracy = np.mean(tps/(tps+fps)), np.mean(tps/(fns+fps)), np.mean((tps+tns)/(tps+fps+fns+tns))
+                    micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+fps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
+                    micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
 
         print('Validation Summary Epoch: [{0}]\t'
                 'Average WER {wer:.3f}\t'
