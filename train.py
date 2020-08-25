@@ -88,7 +88,9 @@ parser.add_argument('--train-asr', action='store_true',
 parser.add_argument('--dummy', action='store_true',
                     help='do a dummy loop')
 parser.add_argument('--loss-save', type=str,
-                    help='name of the loss file to save as')                    
+                    help='name of the loss file to save as')   
+parser.add_argument('--num-epochs', default=1, type=int,
+                    help='chossing the number of iterations to train the discriminator in each training iteration')                 
 
 
 def to_np(x):
@@ -217,6 +219,14 @@ if __name__ == '__main__':
     a = f"epoch,wer,cer,mic_accuracy,mic_precision,mic_recall,mic_f1,d_avg_loss,p_avg_loss\n"
     eps = 0.0000000001 # epsilon value
     
+    # To choose the number of times update the discriminator
+    update_rule = args.update_rule
+    prob = np.geomspace(1, update_rule*1000, num=update_rule)[::-1]
+    prob /= np.sum(prob)
+    print(f"Initial Probability to udpate to the discrimiantor: {prob}")
+    diff = np.array([ prob[i] - prob[-1-i] for i in range(len(prob))])
+    diff /= len(train_sampler)*args.num_epochs
+
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
@@ -258,8 +268,10 @@ if __name__ == '__main__':
                 continue
 
             disc_train_sampler.shuffle(start_epoch)
-            for k, (data_) in enumerate(disc_train_loader): #updating the discriminator only 
-                if k == args.update_rule: break 
+            if args.num_epochs == epoch: prob -= diff
+            update_rule = np.random.choice(10, 1, p=prob) + 1
+            for k, (data_) in enumerate(disc_train_loader): #updating the discriminator only  
+                if k == update_rule: break 
                 
                 d_counter += 1
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
@@ -290,14 +302,13 @@ if __name__ == '__main__':
             p_counter += 1
             # Shuffling the elements of alist s.t. elements are not same at the same indices
             dummy = [] 
-            for i in accents:
+            for acce in accents:
                 while True:
                     d = random.randint(0,len(accent)-1)
-                    if i != d:
+                    if acce != d:
                         dummy.append(d)
                         break
             accents = torch.tensor(dummy).to(device)
-            
 
             # Forward pass
             z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
@@ -339,7 +350,7 @@ if __name__ == '__main__':
             total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
             conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
             tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
-            
+            length, num = eps, eps
             #Decoder used for evaluation
             target_decoder = GreedyDecoder(labels)
             for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
@@ -387,7 +398,10 @@ if __name__ == '__main__':
                     # Discriminator metrics: fill in the confusion matrix.
                     out, predicted = torch.max(discriminator_out, 1)
                     for j in range(len(accents)):
+                        if accents[j] == predicted[j].item():
+                            num = num + 1
                         conf_mat[accents[j], predicted[j].item()] += 1
+                    length = length + len(accents)
 
         # Discriminator metrics: compute metrics using confustion metrics.
         for acc_type in range(len(accent)):
@@ -402,10 +416,11 @@ if __name__ == '__main__':
         print('Validation Summary Epoch: [{0}]\t'
                 'Average WER {wer:.3f}\t'
                 'Average CER {cer:.3f}\t'
+                'Discriminator accuracy {acc_: .3f}\t'
                 'Discriminator accuracy (micro) {acc: .3f}\t'
                 'Discriminator precision (micro) {pre: .3f}\t'
                 'Discriminator recall (micro) {rec: .3f}\t'
-                'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc=micro_accuracy, pre=micro_precision, rec=micro_recall, f1=micro_f1))
+                'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=micro_precision, rec=micro_recall, f1=micro_f1))
 
         
         a += f"{epoch},{wer},{cer},{micro_accuracy},{micro_precision},{micro_recall},{micro_f1},{d_avg_loss},{p_avg_loss}\n"
