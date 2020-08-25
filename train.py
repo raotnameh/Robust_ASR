@@ -268,7 +268,8 @@ if __name__ == '__main__':
                 continue
 
             disc_train_sampler.shuffle(start_epoch)
-            if args.num_epochs == epoch: prob -= diff
+            if args.num_epochs > epoch: prob -= diff
+            else: prob = [0,0,0,0,0,0.1,0.1,0.1,0.1,0.6]
             update_rule = np.random.choice(10, 1, p=prob) + 1
             for k, (data_) in enumerate(disc_train_loader): #updating the discriminator only  
                 if k == update_rule: break 
