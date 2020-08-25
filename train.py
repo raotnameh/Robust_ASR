@@ -416,7 +416,7 @@ if __name__ == '__main__':
         print('Validation Summary Epoch: [{0}]\t'
                 'Average WER {wer:.3f}\t'
                 'Average CER {cer:.3f}\t'
-                'Discriminator accuracy {acc_: .3f}\t'
+                'Accuracy {acc_: .3f}\t'
                 'Discriminator accuracy (micro) {acc: .3f}\t'
                 'Discriminator precision (micro) {pre: .3f}\t'
                 'Discriminator recall (micro) {rec: .3f}\t'
