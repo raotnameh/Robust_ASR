@@ -221,7 +221,7 @@ if __name__ == '__main__':
     
     # To choose the number of times update the discriminator
     update_rule = args.update_rule
-    prob = np.geomspace(1, update_rule*1000, num=update_rule)[::-1]
+    prob = np.geomspace(1, update_rule*10000, num=update_rule)[::-1]
     prob /= np.sum(prob)
     print(f"Initial Probability to udpate to the discrimiantor: {prob}")
     diff = np.array([ prob[i] - prob[-1-i] for i in range(len(prob))])
