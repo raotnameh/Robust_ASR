@@ -214,7 +214,7 @@ if __name__ == '__main__':
     print(model)
     print("Number of parameters: %d" % DeepSpeech.get_param_size(model))
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=0)
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()

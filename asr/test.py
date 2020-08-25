@@ -44,15 +44,15 @@ def evaluate_acc(test_loader,device,model,save_output=None, verbose=False, half=
             time_dur = time_durs.data.cpu().numpy()[idx]
             new_target = targets.data.numpy()[prev:size.item()]
             new_target = shorten_target(new_target,new_size,time_dur)
-            new_target += [0]*(new_timesteps-len(new_target))
+            #new_target += [0]*(new_timesteps-len(new_target))
+            len_target = len(new_target)
             prev = size.item()
-            new_targets.append(new_target)
+            new_target = torch.Tensor(new_target).to(torch.long).to(device)
+            correct+= float((out[idx].argmax(dim=1)[:len_target]==new_target).sum())
+            total+= len_target
 
-        new_targets = torch.Tensor(new_targets).to(torch.long).to(device)
         output_data = []
         
-        correct += float((out.argmax(dim=2)==new_targets).sum())
-        total += new_targets.size(0)*new_targets.size(1)
         if save_output is not None:
             output_data.append((out.cpu(),targets))
     
