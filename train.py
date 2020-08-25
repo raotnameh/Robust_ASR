@@ -216,7 +216,7 @@ if __name__ == '__main__':
 
     # Printing the parameters of all the different modules 
     [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
-    a = f"epoch,wer,cer,mic_accuracy,mic_precision,mic_recall,mic_f1,d_avg_loss,p_avg_loss\n"
+    a = f"epoch,wer,cer,acc,mic_accuracy,mic_precision,mic_recall,mic_f1,d_avg_loss,p_avg_loss\n"
     eps = 0.0000000001 # epsilon value
     
     # To choose the number of times update the discriminator
@@ -423,7 +423,7 @@ if __name__ == '__main__':
                 'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=micro_precision, rec=micro_recall, f1=micro_f1))
 
         
-        a += f"{epoch},{wer},{cer},{micro_accuracy},{micro_precision},{micro_recall},{micro_f1},{d_avg_loss},{p_avg_loss}\n"
+        a += f"{epoch},{wer},{cer},{num/length *100},{micro_accuracy},{micro_precision},{micro_recall},{micro_f1},{d_avg_loss},{p_avg_loss}\n"
 
         with open(args.loss_save+'.txt', "w") as f:
             f.write(a)
