@@ -81,14 +81,12 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
 
         self.conv = MaskConv(nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)),#320-->160
-            nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
             nn.Conv2d(32, 64, kernel_size=(3, 3), stride=(2, 1), padding=(1, 1)),#160-->80
-            nn.BatchNorm2d(64),
             nn.Hardtanh(0, 20, inplace=True),
-            #nn.Conv2d(32, 64, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),#80-->40
+            nn.Conv2d(64, 128, kernel_size=(3, 3), stride=(2, 1), padding=(1, 1)),#80-->40
             #nn.BatchNorm2d(64),
-            #nn.Hardtanh(0, 20, inplace=True),
+            nn.Hardtanh(0, 20, inplace=True),
             #nn.Conv2d(64, 128, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),#40-->20
             #nn.BatchNorm2d(128),
             #nn.Hardtanh(0, 20, inplace=True)
@@ -100,10 +98,10 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         rnn_input_size = int(math.floor(rnn_input_size + 2 * 1 - 3) / 2 + 1)
         #print(rnn_input_size)
         rnn_input_size = int(math.floor(rnn_input_size + 2 * 1 - 3) / 2 + 1)
-        #rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
+        rnn_input_size = int(math.floor(rnn_input_size + 2 * 1 - 3) / 2 + 1)
         #rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
         #print(rnn_input_size)
-        rnn_input_size *= 64
+        rnn_input_size *= 128
         print('input size for TimeDistributed Dense Layer',rnn_input_size)
 
         fully_connected = nn.Sequential(
@@ -113,8 +111,8 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         )
 
         self.conv_params = {'conv1':{'time_kernel':3,'stride':2,'padding':1},
-                'conv2':{'time_kernel':3,'stride':1,'padding':1},}
-                #'conv3':{'time_kernel':3,'stride':1,'padding':1}}
+                'conv2':{'time_kernel':3,'stride':1,'padding':1},
+                'conv3':{'time_kernel':3,'stride':1,'padding':1}}
 
         self.fc = SequenceWise(fully_connected)
 

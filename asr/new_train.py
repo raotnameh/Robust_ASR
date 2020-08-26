@@ -215,16 +215,20 @@ if __name__ == '__main__':
     print("Number of parameters: %d" % DeepSpeech.get_param_size(model))
 
     criterion = nn.CrossEntropyLoss(ignore_index=0)
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
+    
     conv_params = model.conv_params
 
     for epoch in range(start_epoch, args.epochs):
+        batch_time = AverageMeter()
+        data_time = AverageMeter()
+        losses = AverageMeter()
         model.train()
         end = time.time()
         start_epoch_time = time.time()
+        accs = 0
         for i, (data) in enumerate(train_loader, start=start_iter):
+            correct = 0
+            total = 0
             try:
                 if i == len(train_sampler):
                     break
@@ -249,12 +253,17 @@ if __name__ == '__main__':
                     time_dur = time_durs.data.cpu().numpy()[idx]
                     new_target = list(targets.data.numpy()[prev:size.item()])
                     new_target = shorten_target(new_target,new_size,time_dur)
+                    new_target_t = torch.Tensor(new_target).to(torch.long).to(device)
+                    correct+= float((out[idx].argmax(dim=0)[:len(new_target)]==new_target_t).sum())
+                    total+= len(new_target)
                     new_target += [0]*(new_timesteps-len(new_target))
+                    del new_target_t
                     prev = size.item()
                     new_targets.append(new_target)
     
                 new_targets = torch.Tensor(new_targets).to(torch.long).to(device)
-    
+
+                accs = correct/total
                 #change either out or targets to match speech
                 #print(output_sizes)
                 #print(target_sizes)
@@ -301,8 +310,9 @@ if __name__ == '__main__':
                     print('Epoch: [{0}][{1}/{2}]\t'
                         'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                         'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                        'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
-                        (epoch + 1), (i + 1), len(train_sampler), batch_time=batch_time, data_time=data_time, loss=losses))
+                        'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                        'Acc {acc:.4f}\t'.format(
+                        (epoch + 1), (i + 1), len(train_sampler), batch_time=batch_time, data_time=data_time, loss=losses,acc=accs))
                 if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0 and main_proc:
                     file_path = '%s/deepspeech_checkpoint_epoch_%d_iter_%d.pth' % (save_folder, epoch + 1, i + 1)
                     print("Saving checkpoint model to %s" % file_path)
@@ -311,7 +321,7 @@ if __name__ == '__main__':
                                                     acc_results=acc_results, avg_loss=avg_loss),file_path)
                 del loss, out, float_out 
 
-            except Exception as err: print(output_sizes)
+            except Exception as err: print(err)
 
         avg_loss /= len(train_sampler)
 
