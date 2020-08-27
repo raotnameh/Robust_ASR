@@ -320,7 +320,6 @@ if __name__ == '__main__':
                                                     loss_results=loss_results,
                                                     acc_results=acc_results, avg_loss=avg_loss),file_path)
                 del loss, out, float_out
-                break
 
             except Exception as err: print(err)
 

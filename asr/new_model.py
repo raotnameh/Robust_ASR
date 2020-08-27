@@ -80,12 +80,12 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         num_classes = len(self.labels)
 
         self.conv = MaskConv(nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)),#320-->160
+            nn.Conv2d(1, 32, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3)),#320-->160
             nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(32, 64, kernel_size=(3, 3), stride=(2, 1), padding=(1, 1)),#160-->80
+            nn.Conv2d(32, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3)),#160-->80
             nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(64, 128, kernel_size=(3, 3), stride=(2, 1), padding=(1, 1)),#80-->40
-            #nn.BatchNorm2d(64),
+            nn.Conv2d(64, 128, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3)),#80-->40
+            nn.BatchNorm2d(128),
             nn.Hardtanh(0, 20, inplace=True),
             #nn.Conv2d(64, 128, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),#40-->20
             #nn.BatchNorm2d(128),
@@ -110,9 +110,11 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
             nn.Linear(128, num_classes, bias=False)
         )
 
-        self.conv_params = {'conv1':{'time_kernel':3,'stride':2,'padding':1},
-                'conv2':{'time_kernel':3,'stride':1,'padding':1},
-                'conv3':{'time_kernel':3,'stride':1,'padding':1}}
+        self.conv_params = {
+                'conv1':{'time_kernel':7,'stride':2,'padding':3},
+                'conv2':{'time_kernel':7,'stride':2,'padding':3},
+                'conv3':{'time_kernel':7,'stride':2,'padding':3}
+                }
 
         self.fc = SequenceWise(fully_connected)
 

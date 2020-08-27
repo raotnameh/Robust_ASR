@@ -214,7 +214,7 @@ if __name__ == '__main__':
     print(model)
     print("Number of parameters: %d" % DeepSpeech.get_param_size(model))
 
-    criterion = nn.CrossEntropyLoss(ignore_index=0)
+    criterion = nn.CrossEntropyLoss()
     
     conv_params = model.conv_params
 
@@ -226,9 +226,8 @@ if __name__ == '__main__':
         end = time.time()
         start_epoch_time = time.time()
         accs = 0
+        correct,total=0,0
         for i, (data) in enumerate(train_loader, start=start_iter):
-            correct = 0
-            total = 0
             try:
                 if i == len(train_sampler):
                     break
@@ -243,22 +242,22 @@ if __name__ == '__main__':
                 out = out.transpose(1, 2)  # NxHxT
                 new_timesteps = out.size(2)
                 new_targets = []
+                prev = 0
                 #print(target_sizes)
                 for idx,size in enumerate(target_sizes.data.cpu().numpy()):
                     new_size = size.item()
                     for key in conv_params:
                         params = conv_params[key]
                         new_size = int((new_size + 2*params['padding'] - params['time_kernel'])/params['stride'] + 1)
-                    prev = 0
                     time_dur = time_durs.data.cpu().numpy()[idx]
-                    new_target = list(targets.data.numpy()[prev:size.item()])
+                    new_target = list(targets.data.numpy()[prev:prev+size.item()])
                     new_target = shorten_target(new_target,new_size,time_dur)
                     new_target_t = torch.Tensor(new_target).to(torch.long).to(device)
                     correct+= float((out[idx].argmax(dim=0)[:len(new_target)]==new_target_t).sum())
                     total+= len(new_target)
                     new_target += [0]*(new_timesteps-len(new_target))
                     del new_target_t
-                    prev = size.item()
+                    prev += size.item()
                     new_targets.append(new_target)
     
                 new_targets = torch.Tensor(new_targets).to(torch.long).to(device)
