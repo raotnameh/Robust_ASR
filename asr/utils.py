@@ -1,6 +1,6 @@
 import torch
 import torch.distributed as dist
-
+import torch.nn as nn
 from new_model import DeepSpeech
 
 
@@ -50,3 +50,10 @@ def shorten_target(target,new_size,time_dur):
     while(len(new_target)<new_size):
         new_target.append(new_target[-1])
     return new_target
+
+def conv_weights_init(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m,nn.Conv1d):
+        torch.nn.init.xavier_uniform_(m.weight)
+        #print(m.bias)
+        if m.bias is not None and isinstance(m,nn.Conv2d):
+            torch.nn.init.xavier_uniform_(m.bias)

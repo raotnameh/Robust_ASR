@@ -144,7 +144,7 @@ class SpectrogramParser(AudioParser):
         # S = log(S+1)
         #spect = np.log1p(spect)
         #spect = torch.FloatTensor(spect)
-        y = y.reshape((1,y.shape[0]))
+        #y = y.reshape((1,y.shape[0]))
         y = torch.FloatTensor(y)
         if self.normalize:
             mean = y.mean()
@@ -211,12 +211,12 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
 
 def _collate_fn(batch):
     def func(p):
-        return p[0].size(1)
+        return p[0].size(0)
 
-    batch = sorted(batch, key=lambda sample: sample[0].size(1), reverse=True)
+    batch = sorted(batch, key=lambda sample: sample[0].size(0), reverse=True)
     longest_sample = max(batch, key=func)[0]
     minibatch_size = len(batch)
-    max_seqlength = longest_sample.size(1)
+    max_seqlength = longest_sample.size(0)
     #print("max_seqlength",max_seqlength)
     inputs = torch.zeros(minibatch_size, 1, max_seqlength)
     input_percentages = torch.FloatTensor(minibatch_size)
@@ -228,8 +228,9 @@ def _collate_fn(batch):
         tensor = sample[0]
         target = sample[1]
         time_dur = sample[2]
-        seq_length = tensor.size(1)
-        inputs[x][0].narrow(1, 0, seq_length).copy_(tensor)
+        #print(tensor.size())
+        seq_length = tensor.size(0)
+        inputs[x][0].narrow(0, 0, seq_length).copy_(tensor)
         input_percentages[x] = seq_length / float(max_seqlength)
         target_sizes[x] = len(target)
         targets.extend(target) #previously extend

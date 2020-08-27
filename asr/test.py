@@ -25,7 +25,7 @@ def evaluate_acc(test_loader,device,model,save_output=None, verbose=False, half=
     correct,total = 0,0
     for _, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
         inputs, targets, input_percentages, target_sizes, time_durs = data
-        input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+        input_sizes = input_percentages.mul_(int(inputs.size(2))).int()
         inputs = inputs.to(device)
         new_targets = []
 
@@ -33,7 +33,6 @@ def evaluate_acc(test_loader,device,model,save_output=None, verbose=False, half=
             inputs = inputs.half()
 
         out, output_sizes = model(inputs, input_sizes)
-        new_timesteps = out.size(1)
 
         for idx,size in enumerate(target_sizes.data.cpu().numpy()):
             new_size = size.item()

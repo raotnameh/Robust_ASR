@@ -18,7 +18,7 @@ from data.data_loader_1d import AudioDataLoader, SpectrogramDataset, BucketingSa
 from logger import VisdomLogger, TensorBoardLogger
 from new_model_1d import DeepSpeech
 from test import evaluate_acc #make a function evaluate accuracy
-from utils import reduce_tensor, check_loss, shorten_target
+from utils import reduce_tensor, check_loss, shorten_target, conv_weights_init
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--train-manifest', metavar='DIR',
@@ -215,45 +215,54 @@ if __name__ == '__main__':
     print("Number of parameters: %d" % DeepSpeech.get_param_size(model))
 
     criterion = nn.CrossEntropyLoss(ignore_index=0)
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
     conv_params = model.conv_params
-
+    model.apply(conv_weights_init)
     for epoch in range(start_epoch, args.epochs):
         model.train()
         end = time.time()
         start_epoch_time = time.time()
+        batch_time = AverageMeter()
+        data_time = AverageMeter()
+        losses = AverageMeter()
+        accs = 0
+        correct,total=0,0
         for i, (data) in enumerate(train_loader, start=start_iter):
             try:
                 if i == len(train_sampler):
                     break
                 inputs, targets, input_percentages, target_sizes, time_durs = data
                 #print(time_durs.data)
-                input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+                input_sizes = input_percentages.mul_(int(inputs.size(2))).int()
                 # measure data loading time
                 data_time.update(time.time() - end)
                 inputs = inputs.to(device)
-            
                 out, output_sizes = model(inputs, input_sizes)#NxTxH
                 out = out.transpose(1, 2)  # NxHxT
                 new_timesteps = out.size(2)
                 new_targets = []
+                #print('targets',targets)
                 #print(target_sizes)
+                prev = 0
                 for idx,size in enumerate(target_sizes.data.cpu().numpy()):
                     new_size = size.item()
                     for key in conv_params:
                         params = conv_params[key]
                         new_size = int((new_size + 2*params['padding'] - params['time_kernel'])/params['stride'] + 1)
-                    prev = 0
                     time_dur = time_durs.data.cpu().numpy()[idx]
-                    new_target = list(targets.data.numpy()[prev:size.item()])
+                    new_target = list(targets.data.numpy()[prev:prev+size.item()])
                     new_target = shorten_target(new_target,new_size,time_dur)
+                    new_target_t = torch.Tensor(new_target).to(torch.long).to(device)
+                    correct+= float((out[idx].argmax(dim=0)[:len(new_target)]==new_target_t).sum())
+                    #print(new_target_t)
+                    total+= len(new_target)
                     new_target += [0]*(new_timesteps-len(new_target))
-                    prev = size.item()
+                    del new_target_t
+                    prev += size.item()
+                    #print(prev)
                     new_targets.append(new_target)
     
                 new_targets = torch.Tensor(new_targets).to(torch.long).to(device)
+                accs = correct/total
     
                 #change either out or targets to match speech
                 #print(output_sizes)
@@ -301,17 +310,19 @@ if __name__ == '__main__':
                     print('Epoch: [{0}][{1}/{2}]\t'
                         'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                         'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                        'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
-                        (epoch + 1), (i + 1), len(train_sampler), batch_time=batch_time, data_time=data_time, loss=losses))
+                        'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                        'Acc {acc:.5f}\t'.format(
+                        (epoch + 1), (i + 1), len(train_sampler), batch_time=batch_time, data_time=data_time, loss=losses,acc=accs))
                 if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0 and main_proc:
                     file_path = '%s/deepspeech_checkpoint_epoch_%d_iter_%d.pth' % (save_folder, epoch + 1, i + 1)
                     print("Saving checkpoint model to %s" % file_path)
                     torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                     loss_results=loss_results,
                                                     acc_results=acc_results, avg_loss=avg_loss),file_path)
-                del loss, out, float_out 
+                del loss, out, float_out
+                break
 
-            except Exception as err: print(output_sizes)
+            except Exception as err: print(err)
 
         avg_loss /= len(train_sampler)
 
