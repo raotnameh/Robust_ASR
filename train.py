@@ -319,7 +319,7 @@ if __name__ == '__main__':
             discriminator_out = discriminator(z_) # Discriminator network
             asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
             # Loss
-            discriminator_loss = dis_loss(discriminator_out, accents)
+            discriminator_loss = dis_loss(discriminator_out, accents)*0.1
             p_d_loss = discriminator_loss.item()
             p_d_avg_loss += p_d_loss
 
@@ -327,7 +327,7 @@ if __name__ == '__main__':
             asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
             asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
             decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
-            loss = asr_loss + decoder_loss
+            loss = asr_loss + decoder_loss*0.2
             p_loss = loss.item()
             p_avg_loss += p_loss
 
