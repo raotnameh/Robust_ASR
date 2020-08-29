@@ -162,7 +162,7 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
 
         fully_connected = nn.Sequential(
             nn.BatchNorm1d(rnn_hidden_size),
-            nn.Linear(rnn_input_size, num_classes, bias=False)
+            nn.Linear(rnn_hidden_size, num_classes, bias=False)
         )
 
         self.conv_params = {

@@ -16,7 +16,7 @@ from apex.parallel import DistributedDataParallel
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from logger import VisdomLogger, TensorBoardLogger
-from new_model_rnn import DeepSpeech
+from new_model_rnn import DeepSpeech, supported_rnns
 from test import evaluate_acc #make a function evaluate accuracy
 from utils import reduce_tensor, check_loss, shorten_target
 
@@ -32,6 +32,9 @@ parser.add_argument('--labels-path', default='labels.json', help='Contains all c
 parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')
 parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
 parser.add_argument('--window', default='hamming', help='Window type for spectrogram generation')
+parser.add_argument('--hidden-size', default=768, type=int, help='Hidden size of RNNs')
+parser.add_argument('--hidden-layers', default=5, type=int, help='Number of RNN layers')
+parser.add_argument('--rnn-type', default='gru', help='Type of the RNN. rnn|gru|lstm are supported')
 parser.add_argument('--epochs', default=70, type=int, help='Number of training epochs')
 parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
@@ -64,6 +67,8 @@ parser.add_argument('--no-shuffle', dest='no_shuffle', action='store_true',
                     help='Turn off shuffling and sample from dataset based on sequence length (smallest to largest)')
 parser.add_argument('--no-sortaGrad', dest='no_sorta_grad', action='store_true',
                     help='Turn off ordering of dataset on sequence length for the first epoch.')
+parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_false', default=True,
+                    help='Turn off bi-directional RNNs, introduces lookahead convolution')
 parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
                     help='Use simple spectral augmentation on mel spectograms.')
 parser.add_argument('--dist-url', default='tcp://127.0.0.1:1550', type=str,
@@ -170,7 +175,14 @@ if __name__ == '__main__':
                           noise_prob=args.noise_prob,
                           noise_levels=(args.noise_min, args.noise_max))
     
-    model = DeepSpeech(labels=labels,audio_conf=audio_conf)
+    rnn_type = args.rnn_type.lower()
+    assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
+    model = DeepSpeech(rnn_hidden_size=args.hidden_size,
+                        nb_layers=args.hidden_layers,
+                        labels=labels,
+                        rnn_type=supported_rnns[rnn_type],
+                        audio_conf=audio_conf,
+                        bidirectional=args.bidirectional)
 
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
@@ -240,6 +252,7 @@ if __name__ == '__main__':
             
                 out, output_sizes = model(inputs, input_sizes)#NxTxH
                 out = out.transpose(1, 2)  # NxHxT
+                print(out.size())
                 new_timesteps = out.size(2)
                 new_targets = []
                 prev = 0
