@@ -80,40 +80,46 @@ class DeepSpeech(nn.Module): #Language Recognizer Module
         num_classes = len(self.labels)
 
         self.conv = MaskConv(nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3)),#320-->160
+            nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#320-->160
+            nn.Hardtanh(0,20,inplace=True),
+            nn.Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#160-->80
+            nn.BatchNorm2d(64),
             nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(32, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3)),#160-->80
+            nn.AvgPool2d(2,stride=2),
+            nn.Conv2d(64, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#80-->40,
             nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(64, 128, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3)),#80-->40
+            nn.Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#160-->80
             nn.BatchNorm2d(128),
             nn.Hardtanh(0, 20, inplace=True),
-            #nn.Conv2d(64, 128, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),#40-->20
-            #nn.BatchNorm2d(128),
-            #nn.Hardtanh(0, 20, inplace=True)
-        ))
+            nn.AvgPool2d(2,stride=2),
+            nn.Conv2d(128, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#80-->40,
+            nn.Hardtanh(0, 20, inplace=True),
+            nn.Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#160-->80
+            nn.BatchNorm2d(256),
+            nn.Hardtanh(0, 20, inplace=True),
+            nn.AvgPool2d(2,stride=2)
+            ))
 
         # Based on above convolutions and spectrogram size using conv formula (W - F + 2P)/ S+1
         rnn_input_size = int(math.floor((sample_rate * window_size) / 2) + 1)
         #print(rnn_input_size)
-        rnn_input_size = int(math.floor(rnn_input_size + 2 * 1 - 3) / 2 + 1)
+        rnn_input_size = int(math.floor(rnn_input_size + 2 * 0 - 2) / 2 + 1)
         #print(rnn_input_size)
-        rnn_input_size = int(math.floor(rnn_input_size + 2 * 1 - 3) / 2 + 1)
-        rnn_input_size = int(math.floor(rnn_input_size + 2 * 1 - 3) / 2 + 1)
+        rnn_input_size = int(math.floor(rnn_input_size + 2 * 0 - 2) / 2 + 1)
+        rnn_input_size = int(math.floor(rnn_input_size + 2 * 0 - 2) / 2 + 1)
         #rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
         #print(rnn_input_size)
-        rnn_input_size *= 128
+        rnn_input_size *= 256
         print('input size for TimeDistributed Dense Layer',rnn_input_size)
 
         fully_connected = nn.Sequential(
-            nn.Linear(rnn_input_size, 128, bias=False),
-            nn.LeakyReLU(),
-            nn.Linear(128, num_classes, bias=False)
+            nn.Linear(rnn_input_size, num_classes, bias=False)
         )
 
         self.conv_params = {
-                'conv1':{'time_kernel':7,'stride':2,'padding':3},
-                'conv2':{'time_kernel':7,'stride':2,'padding':3},
-                'conv3':{'time_kernel':7,'stride':2,'padding':3}
+                'conv1':{'time_kernel':2,'stride':2,'padding':0},
+                'conv2':{'time_kernel':2,'stride':2,'padding':0},
+                'conv3':{'time_kernel':2,'stride':2,'padding':0}
                 }
 
         self.fc = SequenceWise(fully_connected)
