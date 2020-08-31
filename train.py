@@ -197,6 +197,8 @@ if __name__ == '__main__':
                                      lr=args.lr,weight_decay=1e-4,amsgrad=True)
     models['decoder'] = [decoder, dec_loss, ed_optimizer] 
 
+    eps = 0.0000000001 # epsilon value
+
     # Forget_net
     if not args.train_asr:
         fnet = ForgetNet()
@@ -210,12 +212,12 @@ if __name__ == '__main__':
         discriminator = discriminator.to(device)
         discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
-        disc_loss_weights = torch.zeros(len(accent))
+        disc_loss_weights = torch.zeros(len(accent)) + eps
         for accent_type_f in accent_counts:
             if isinstance(accent_counts[accent_type_f], dict):
                 for accent_type_in_f in accent_counts[accent_type_f]:
                     disc_loss_weights[accent[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
-        disc_loss_weights = disc_loss_weights / torch.sum(disc_loss_weights)      
+        disc_loss_weights = torch.sum(disc_loss_weights) / disc_loss_weights     
         dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights)
         models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer] 
     
@@ -233,7 +235,6 @@ if __name__ == '__main__':
     for accent_type in accent_list:
         a += f"f1_{accent_type},"
     a += "d_avg_loss,p_avg_loss\n"
-    eps = 0.0000000001 # epsilon value
     
     # To choose the number of times update the discriminator
     update_rule = args.update_rule
