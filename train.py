@@ -9,6 +9,7 @@ from tqdm.auto import tqdm
 import numpy as np
 from warpctc_pytorch import CTCLoss
 from collections import OrderedDict
+import pandas as pd
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, accent
 from decoder import GreedyDecoder
@@ -208,7 +209,14 @@ if __name__ == '__main__':
         discriminator = DiscimnateNet(classes=len(accent))
         discriminator = discriminator.to(device)
         discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        dis_loss = nn.CrossEntropyLoss()
+        accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
+        disc_loss_weights = torch.zeros(len(accent))
+        for accent_type_f in accent_counts:
+            if isinstance(accent_counts[accent_type_f], dict):
+                for accent_type_in_f in accent_counts[accent_type_f]:
+                    disc_loss_weights[accent[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
+        disc_loss_weights = disc_loss_weights / torch.sum(disc_loss_weights)      
+        dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights)
         models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer] 
     
     # Printing the models
