@@ -269,13 +269,30 @@ class DeepSpeech(nn.Module):
 
 
 class ForgetNet(nn.Module):
-    def __init__(self):
+    def __init__(self, num_modules, residual_bool, hard_mask_bool):
         super(ForgetNet, self).__init__()
-        self.apply_hard_mask = True
-        self.conv_1 = nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5))
-        self.conv_2 = nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5))
-        self.batch_norm_1 = nn.BatchNorm2d(32)
-        self.batch_norm_2 = nn.BatchNorm2d(32)
+        self.residual = residual_bool
+        self.apply_hard_mask = hard_mask_bool
+        # self.conv_1 = nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5))
+        # self.conv_2 = nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5))
+        # self.batch_norm_1 = nn.BatchNorm2d(32)
+        # self.batch_norm_2 = nn.BatchNorm2d(32)
+        assert(num_modules >= 1)
+        self.modules_list = []
+        for i in range(num_modules):
+            if i==0:
+                stride_1, stride_2, input_channels = (2, 2), (2, 1), 1
+            else:
+                stride_1, stride_2, input_channels = (1, 1), (1, 1), 32
+            self.modules_list.append(
+                                    nn.ModuleDict({
+                                    'conv_1': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
+                                    'batch_norm_1': nn.BatchNorm2d(32),
+                                    'conv_2': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
+                                    'batch_norm_2': nn.BatchNorm2d(32),
+                                    })
+                                    )
+        self.modules_list = nn.ModuleList(self.modules_list)
         self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
         self.sigmoid = nn.Sigmoid()
 
@@ -290,9 +307,16 @@ class ForgetNet(nn.Module):
         mask = mask[:, :-1].view(mask.shape[0], 1, 1, mask.shape[-1]-1).repeat(1, x.shape[1], x.shape[2], 1)
         return mask * x
 
-    def forward(self, x, widths):
-        x = self.hard_tanh(self.batch_norm_1(self.conv_1(x)))
-        x = self.sigmoid(self.batch_norm_2(self.conv_2(x)))
+    def forward(self, input_x, widths):
+        # x = self.hard_tanh(self.batch_norm_1(self.conv_1(input_x)))
+        # x = self.sigmoid(self.batch_norm_2(self.conv_2(x)))
+        for i, module_dict in enumerate(self.modules_list):
+            x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](input_x)))
+            x = module_dict['conv_2'](x)
+            if i != 0 and self.residual: # Residual connection
+                x = x + input_x
+            non_lin = self.hard_tanh if (len(self.modules_list) != i+1) else self.sigmoid
+            input_x = x = non_lin(module_dict['batch_norm_2'](x))
         if self.apply_hard_mask:
             x = self.hard_mask(x, widths)
         return x
@@ -320,30 +344,50 @@ class DiscimnateNet(nn.Module):
         return x
 
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, num_modules, residual_bool):
         super(Encoder, self).__init__()
-
         
-        # self.conv_1 = nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5))
-        # self.conv_2 = nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5))
-        # self.batch_norm_1 = nn.BatchNorm2d(32)
-        # self.batch_norm_2 = nn.BatchNorm2d(32)
-        # self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
+        assert(num_modules >= 1)
+        self.modules_list = []
+        for i in range(num_modules):
+            if i==0:
+                stride_1, stride_2, input_channels = (2, 2), (2, 1), 1
+            else:
+                stride_1, stride_2, input_channels = (1, 1), (1, 1), 32
+            self.modules_list.append(
+                                    nn.ModuleDict({
+                                    'conv_1': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
+                                    'batch_norm_1': nn.BatchNorm2d(32),
+                                    'conv_2': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
+                                    'batch_norm_2': nn.BatchNorm2d(32),
+                                    })
+                                    )
+        self.modules_list = nn.ModuleList(self.modules_list)
+        self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
+        self.residual = residual_bool
 
-        self.conv =MaskConv(nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
-            nn.BatchNorm2d(32),
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
-            nn.BatchNorm2d(32),
-            nn.Hardtanh(0, 20, inplace=True)
-        ))
+        # self.conv = MaskConv(nn.Sequential(
+        #     nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
+        #     nn.BatchNorm2d(32),
+        #     nn.Hardtanh(0, 20, inplace=True),
+        #     nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
+        #     nn.BatchNorm2d(32),
+        #     nn.Hardtanh(0, 20, inplace=True)
+        # ))
 
-    def forward(self,x,lengths):
+    def forward(self, input_x, lengths):
         # x = self.hard_tanh(self.batch_norm_1(self.conv_1(x)))
         # x = self.hard_tanh(self.batch_norm_2(self.conv_2(x)))
-        x, _ = self.conv(x,lengths)
+        for i, module_dict in enumerate(self.modules_list):
+            x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](input_x)))
+            x = module_dict['conv_2'](x)
+            if i != 0 and self.residual: # Residual connection
+                x = x + input_x
+            input_x = x = self.hard_tanh(module_dict['batch_norm_2'](x))
         return x, self.get_seq_lens(lengths)
+
+        # x, _ = self.conv(x,lengths)
+        # return x, self.get_seq_lens(lengths)
 
     def get_seq_lens(self, input_length):
         """
@@ -353,7 +397,8 @@ class Encoder(nn.Module):
         :return: 1D Tensor scaled by model
         """
         seq_len = input_length
-        for m in self.conv.modules():
+        # for m in self.conv.modules():
+        for m in self.modules_list[0].values():
             if type(m) == nn.modules.conv.Conv2d:
                 seq_len = ((seq_len + 2 * m.padding[1] - m.dilation[1] * (m.kernel_size[1] - 1) - 1) // m.stride[1] + 1)
         return seq_len.int()

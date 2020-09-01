@@ -11,7 +11,8 @@ from warpctc_pytorch import CTCLoss
 from collections import OrderedDict
 import pandas as pd
 
-from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, accent
+from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler
+from data.data_loader import accent as accent_dict
 from decoder import GreedyDecoder
 from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
 
@@ -75,6 +76,14 @@ parser.add_argument('--world-size', default=1, type=int,
                     help='number of distributed processes')
 parser.add_argument('--rank', default=0, type=int,
                     help='The rank of this process')
+parser.add_argument('--enco-modules', dest='enco_modules', default=1, type=int,
+                    help='Number of convolutional modules in Encoder net')
+parser.add_argument('--enco-res', dest='enco_res', action='store_true', default= False,
+                    help='Whether to keep in residual connections in encoder network')          
+parser.add_argument('--forg-modules', dest='forg_modules', default=1, type=int,
+                    help='Number of convolutional modules in Encoder net')
+parser.add_argument('--forg-res', dest='forg_res', action='store_true', default= False,
+                    help='Whether to keep in residual connections in forget network')      
 parser.add_argument('--gpu-rank', default=None,
                     help='If using distributed parallel for multi-gpu, sets the GPU for the process')
 parser.add_argument('--seed', default=123456, type=int, help='Seed to generators')
@@ -101,7 +110,7 @@ def to_np(x):
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    accent = list(accent.values())
+    accent = list(accent_dict.values())
 
     # Set seeds for determinism
     torch.manual_seed(args.seed)
@@ -186,11 +195,11 @@ if __name__ == '__main__':
     models['predictor'] = [asr, criterion, asr_optimizer] 
 
     # Encoder and Decoder
-    encoder = Encoder()
+    encoder = Encoder(num_modules = args.enco_modules, residual_bool = args.enco_res)
     encoder = encoder.to(device)
     models['encoder'] = [encoder, None, None]
     decoder = Decoder()
-    decoder =decoder.to(device)
+    decoder = decoder.to(device)
     dec_loss = Decoder_loss(nn.MSELoss())
 
     ed_optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()),
@@ -201,7 +210,7 @@ if __name__ == '__main__':
 
     # Forget_net
     if not args.train_asr:
-        fnet = ForgetNet()
+        fnet = ForgetNet(num_modules = args.forg_modules, residual_bool = args.forg_res, hard_mask_bool = True)
         fnet = fnet.to(device)
         fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         models['forget_net'] = [fnet, None, fnet_optimizer]
@@ -216,9 +225,10 @@ if __name__ == '__main__':
         for accent_type_f in accent_counts:
             if isinstance(accent_counts[accent_type_f], dict):
                 for accent_type_in_f in accent_counts[accent_type_f]:
-                    disc_loss_weights[accent[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
+                    if accent_type_in_f in accent_dict:
+                        disc_loss_weights[accent_dict[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
         disc_loss_weights = torch.sum(disc_loss_weights) / disc_loss_weights     
-        dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights)
+        dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
         models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer] 
     
     # Printing the models
@@ -347,7 +357,7 @@ if __name__ == '__main__':
             asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
             asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
             decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
-            loss = asr_loss + decoder_loss*0.2 + mask_regulariser_loss
+            loss = asr_loss + decoder_loss*0.2 + mask_regulariser_loss.mean()
             p_loss = loss.item()
             p_avg_loss += p_loss
 
