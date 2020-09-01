@@ -7,7 +7,7 @@ def get_length(input_video):
     result = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', input_video.split(',')[0]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     return [input_video,float(result.stdout)]
 
-files = glob.glob("train.csv")
+files = glob.glob("t.csv")
 print(files)
 max_duration = 15.0
 min_duration = 0.5
@@ -18,7 +18,7 @@ def csv_(dummy):
     a = ''
     for i in tqdm(dummy):
         a+=i[0]
-    with open('train_sorted.csv', "w") as f:
+    with open('t_sorted.csv', "w") as f:
         f.write(a)
 
 
@@ -29,7 +29,7 @@ for file in files:
         csv = f.readlines()
 
     def run(get_length, wav):
-            with ProcessPoolExecutor(max_workers=12) as executor:
+            with ProcessPoolExecutor(max_workers=48) as executor:
                 results = list(tqdm((executor.map(get_length, wav)), total=len(wav)))
             return results
     print("starting the processes")

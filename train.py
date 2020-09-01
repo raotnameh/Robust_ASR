@@ -221,7 +221,7 @@ if __name__ == '__main__':
     
     # To choose the number of times update the discriminator
     update_rule = args.update_rule
-    prob = np.geomspace(1, update_rule*10000, num=update_rule)[::-1]
+    prob = np.geomspace(1, update_rule*100000, num=update_rule)[::-1]
     prob /= np.sum(prob)
     print(f"Initial Probability to udpate to the discrimiantor: {prob}")
     diff = np.array([ prob[i] - prob[-1-i] for i in range(len(prob))])
@@ -269,8 +269,10 @@ if __name__ == '__main__':
 
             disc_train_sampler.shuffle(start_epoch)
             if args.num_epochs > epoch: prob -= diff
-            else: prob = [0,0,0,0,0,0.1,0.1,0.1,0.1,0.6]
-            update_rule = np.random.choice(10, 1, p=prob) + 1
+            else: 
+                prob = [i*0 for i in prob]
+                prob[-1] = 1
+            update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
             for k, (data_) in enumerate(disc_train_loader): #updating the discriminator only  
                 if k == update_rule: break 
                 
@@ -319,7 +321,7 @@ if __name__ == '__main__':
             discriminator_out = discriminator(z_) # Discriminator network
             asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
             # Loss
-            discriminator_loss = dis_loss(discriminator_out, accents)*0.1
+            discriminator_loss = dis_loss(discriminator_out, accents)*0.5
             p_d_loss = discriminator_loss.item()
             p_d_avg_loss += p_d_loss
 
