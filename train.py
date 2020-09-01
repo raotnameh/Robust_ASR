@@ -9,6 +9,7 @@ from tqdm.auto import tqdm
 import numpy as np
 from warpctc_pytorch import CTCLoss
 from collections import OrderedDict
+import pandas as pd
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, accent
 from decoder import GreedyDecoder
@@ -196,6 +197,8 @@ if __name__ == '__main__':
                                      lr=args.lr,weight_decay=1e-4,amsgrad=True)
     models['decoder'] = [decoder, dec_loss, ed_optimizer] 
 
+    eps = 0.0000000001 # epsilon value
+
     # Forget_net
     if not args.train_asr:
         fnet = ForgetNet()
@@ -208,7 +211,14 @@ if __name__ == '__main__':
         discriminator = DiscimnateNet(classes=len(accent))
         discriminator = discriminator.to(device)
         discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        dis_loss = nn.CrossEntropyLoss()
+        accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
+        disc_loss_weights = torch.zeros(len(accent)) + eps
+        for accent_type_f in accent_counts:
+            if isinstance(accent_counts[accent_type_f], dict):
+                for accent_type_in_f in accent_counts[accent_type_f]:
+                    disc_loss_weights[accent[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
+        disc_loss_weights = torch.sum(disc_loss_weights) / disc_loss_weights     
+        dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights)
         models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer] 
     
     # Printing the models
@@ -216,8 +226,15 @@ if __name__ == '__main__':
 
     # Printing the parameters of all the different modules 
     [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
-    a = f"epoch,wer,cer,acc,mic_accuracy,mic_precision,mic_recall,mic_f1,d_avg_loss,p_avg_loss\n"
-    eps = 0.0000000001 # epsilon value
+    accent_list = sorted(accent, key=lambda x:accent[x])
+    a = f"epoch,wer,cer,acc,"
+    for accent_type in accent_list:
+        a += f"precision_{accent_type},"
+    for accent_type in accent_list:
+        a += f"recall_{accent_type},"
+    for accent_type in accent_list:
+        a += f"f1_{accent_type},"
+    a += "d_avg_loss,p_avg_loss\n"
     
     # To choose the number of times update the discriminator
     update_rule = args.update_rule
@@ -324,12 +341,13 @@ if __name__ == '__main__':
             discriminator_loss = dis_loss(discriminator_out, accents)*0.5
             p_d_loss = discriminator_loss.item()
             p_d_avg_loss += p_d_loss
+            mask_regulariser_loss = torch.bmm(m.view(m.shape[0], 1, -1), 1.-m.view(m.shape[0], -1, 1)).view(m.shape[0], 1)
 
             asr_out = asr_out.transpose(0, 1)  # TxNxH
             asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
             asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
             decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
-            loss = asr_loss + decoder_loss*0.2
+            loss = asr_loss + decoder_loss*0.2 + mask_regulariser_loss
             p_loss = loss.item()
             p_avg_loss += p_loss
 
@@ -412,7 +430,8 @@ if __name__ == '__main__':
             fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
             fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
             tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
-        macro_precision, macro_recall, macro_accuracy = np.mean(tps/(tps+fps)), np.mean(tps/(fns+fps)), np.mean((tps+tns)/(tps+fps+fns+tns))
+        class_wise_precision, class_wise_recall, class_wise_f1 = tps/(tps+fps), tps/(fns+fps), 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
+        macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
         micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+fps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
         micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
         
@@ -426,7 +445,15 @@ if __name__ == '__main__':
                 'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=micro_precision, rec=micro_recall, f1=micro_f1))
 
         
-        a += f"{epoch},{wer},{cer},{num/length *100},{micro_accuracy},{micro_precision},{micro_recall},{micro_f1},{d_avg_loss},{p_avg_loss}\n"
+        a += f"{epoch},{wer},{cer},{num/length *100},"
+        
+        for idx, accent_type in enumerate(accent_list):
+            a += f"{class_wise_precision[idx]},"
+        for idx, accent_type in enumerate(accent_list):
+            a += f"{class_wise_recall[idx]},"
+        for idx, accent_type in enumerate(accent_list):
+            a += f"{class_wise_f1[idx]},"
+        a += f"{d_avg_loss},{p_avg_loss}\n"
 
         with open(args.loss_save+'.txt', "w") as f:
             f.write(a)
