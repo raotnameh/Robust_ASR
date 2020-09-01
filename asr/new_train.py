@@ -16,11 +16,12 @@ from apex.parallel import DistributedDataParallel
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from logger import VisdomLogger, TensorBoardLogger
-from new_model import DeepSpeech
+from new_model import DeepSpeechRNN,DeepSpeech2DCNN,DeepSpeech1DCNN,supported_rnns
 from test import evaluate_acc #make a function evaluate accuracy
 from utils import reduce_tensor, check_loss, shorten_target
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
+parser.add_argument('--model-type',default='2dcnn',type=str,help='Model Architecture you want to train, can be 1dcnn,2dcnn,rnn')
 parser.add_argument('--train-manifest', metavar='DIR',
                     help='path to train manifest csv', default='data/train_manifest.csv')
 parser.add_argument('--val-manifest', metavar='DIR',
@@ -32,6 +33,9 @@ parser.add_argument('--labels-path', default='labels.json', help='Contains all c
 parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')
 parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
 parser.add_argument('--window', default='hamming', help='Window type for spectrogram generation')
+parser.add_argument('--hidden-size', default=768, type=int, help='Hidden size of RNNs')
+parser.add_argument('--hidden-layers', default=5, type=int, help='Number of RNN layers')
+parser.add_argument('--rnn-type', default='gru', help='Type of the RNN. rnn|gru|lstm are supported')
 parser.add_argument('--epochs', default=70, type=int, help='Number of training epochs')
 parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
@@ -64,6 +68,8 @@ parser.add_argument('--no-shuffle', dest='no_shuffle', action='store_true',
                     help='Turn off shuffling and sample from dataset based on sequence length (smallest to largest)')
 parser.add_argument('--no-sortaGrad', dest='no_sorta_grad', action='store_true',
                     help='Turn off ordering of dataset on sequence length for the first epoch.')
+parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_false', default=True,
+                    help='Turn off bi-directional RNNs, introduces lookahead convolution')
 parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
                     help='Use simple spectral augmentation on mel spectograms.')
 parser.add_argument('--dist-url', default='tcp://127.0.0.1:1550', type=str,
@@ -108,12 +114,13 @@ class AverageMeter(object):
 if __name__ == '__main__':
     args = parser.parse_args()
     args.num_workers = 2
+    MODEL = None
     # Set seeds for determinism
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
-
+    model_type = args.model_type
     device = torch.device("cuda:"+str(args.gpu_rank) if args.cuda else "cpu")
     torch.cuda.set_device(int(args.gpu_rank))
     args.distributed = args.world_size > 1
@@ -139,7 +146,15 @@ if __name__ == '__main__':
     if args.continue_from:  # Starting from previous model
         print("Loading checkpoint model %s" % args.continue_from)
         package = torch.load(args.continue_from, map_location=lambda storage, loc: storage)
-        model = DeepSpeech.load_model_package(package)
+        if model_type == '2dcnn':
+            model = DeepSpeech2DCNN.load_model_package(package)
+        elif model_type == '1dcnn':
+            model = DeepSpeech1DCNN.load_model_package(package)
+        elif model_type == 'rnn':
+            MODEL = DeepSpeechRNN.load_model_package(package)
+        else:
+            print('Wrong model type')
+            exit(1)
         labels = model.labels
         audio_conf = model.audio_conf
         if not args.finetune:  # Don't want to restart training
@@ -169,8 +184,21 @@ if __name__ == '__main__':
                           noise_dir=args.noise_dir,
                           noise_prob=args.noise_prob,
                           noise_levels=(args.noise_min, args.noise_max))
-    
-    model = DeepSpeech(labels=labels,audio_conf=audio_conf)
+    if model_type == '2dcnn':
+        model = DeepSpeech2DCNN(labels=labels,audio_conf=audio_conf)
+    elif model_type == '1dcnn':
+        model = DeepSpeech1DCNN(labels=labels,audio_conf=audio_conf)
+    elif model_type == 'rnn':
+        rnn_type = args.rnn_type.lower()
+        model = DeepSpeechRNN(rnn_hidden_size=args.hidden_size,
+                        nb_layers=args.hidden_layers,
+                        labels=labels,
+                        rnn_type=supported_rnns[rnn_type],
+                        audio_conf=audio_conf,
+                        bidirectional=args.bidirectional)
+    else:
+        print('Wrong model type')
+        exit(1)
 
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
@@ -212,7 +240,7 @@ if __name__ == '__main__':
     if args.distributed:
         model = DistributedDataParallel(model)
     print(model)
-    print("Number of parameters: %d" % DeepSpeech.get_param_size(model))
+    print("Number of parameters: %d" % DeepSpeech2DCNN.get_param_size(model))
 
     criterion = nn.CrossEntropyLoss()
     
@@ -315,7 +343,7 @@ if __name__ == '__main__':
                 if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0 and main_proc:
                     file_path = '%s/deepspeech_checkpoint_epoch_%d_iter_%d.pth' % (save_folder, epoch + 1, i + 1)
                     print("Saving checkpoint model to %s" % file_path)
-                    torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+                    torch.save(DeepSpeech2DCNN.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                     loss_results=loss_results,
                                                     acc_results=acc_results, avg_loss=avg_loss),file_path)
                 del loss, out, float_out 
@@ -356,10 +384,10 @@ if __name__ == '__main__':
 
         if main_proc and args.checkpoint:
             file_path = '%s/deepspeech_%d.pth' % (save_folder, epoch + 1)
-            try:torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+            try:torch.save(DeepSpeech2DCNN.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                 loss_results=loss_results,
                                                 acc_results=acc_results, avg_loss=avg_loss),file_path)
-            except:torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+            except:torch.save(DeepSpeech2DCNN.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                 loss_results=loss_results,
                                                 acc_results=acc_results, avg_loss=avg_loss),file_path)
         # anneal lr
@@ -369,10 +397,10 @@ if __name__ == '__main__':
 
         if main_proc and (best_acc is None or best_acc < acc):
             print("Found better validated model, saving to %s" % args.model_path)
-            try:torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+            try:torch.save(DeepSpeech2DCNN.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                 loss_results=loss_results,
                                                 acc_results=acc_results, avg_loss=avg_loss),args.model_path)
-            except:torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
+            except:torch.save(DeepSpeech2DCNN.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                 loss_results=loss_results,
                                                 acc_results=acc_results, avg_loss=avg_loss),args.model_path)
             best_acc = acc
