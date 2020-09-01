@@ -35,5 +35,5 @@ Hours of speech: 1.33 <br />
 
 ## Command
 ```
-python train.py --train-manifest data/train_sorted.csv --val-manifest data/dev_sorted.csv --cuda --rnn-type gru --hidden-layers 3 --momentum 0.94 --opt-level O1 --loss-scale 1.0 --hidden-size 1024 --epochs 100 --lr 0.0001  --batch-size 24 --gpu-rank 4 --checkpoint --save-folder /media/data_dump/hemant/rachit/invarient_Weights/ --update-rule 4
+python train.py --enco-modules 4 --enco-res --forg-modules 4 --forg-res --train-manifest data/train_sorted_EN_US.csv --val-manifest data/dev_sorted.csv --cuda --rnn-type gru --hidden-layers 3 --momentum 0.94 --opt-level O1 --loss-scale 1.0 --hidden-size 1024 --epochs 100 --lr 0.0001 --batch-size 24 --gpu-rank 4 --checkpoint --save-folder /media/data_dump/hemant/rachit/invarient_Weights/ --update-rule 4
 ```
