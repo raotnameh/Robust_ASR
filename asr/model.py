@@ -140,24 +140,11 @@ class DeepSpeech2DCNN(nn.Module): #Language Recognizer Module
         num_classes = len(self.labels)
 
         self.conv = MaskConv2D(nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#320-->160
-            nn.Hardtanh(0,20,inplace=True),
-            nn.Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#160-->80
-            nn.BatchNorm2d(64),
+            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
+            nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
-            nn.AvgPool2d(2,stride=2),
-            nn.Conv2d(64, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#80-->40,
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#160-->80
-            nn.BatchNorm2d(128),
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.AvgPool2d(2,stride=2),
-            nn.Conv2d(128, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#80-->40,
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#160-->80
-            nn.BatchNorm2d(256),
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.AvgPool2d(2,stride=2)
+            nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
+
             ))
 
         # Based on above convolutions and spectrogram size using conv formula (W - F + 2P)/ S+1
@@ -175,12 +162,6 @@ class DeepSpeech2DCNN(nn.Module): #Language Recognizer Module
         fully_connected = nn.Sequential(
             nn.Linear(rnn_input_size, num_classes, bias=False)
         )
-
-        self.conv_params = {
-                'conv1':{'time_kernel':2,'stride':2,'padding':0},
-                'conv2':{'time_kernel':2,'stride':2,'padding':0},
-                'conv3':{'time_kernel':2,'stride':2,'padding':0}
-                }
 
         self.fc = SequenceWise(fully_connected)
 
@@ -218,6 +199,8 @@ class DeepSpeech2DCNN(nn.Module): #Language Recognizer Module
         for m in self.conv.modules():
             if type(m) == nn.modules.conv.Conv2d:
                 seq_len = ((seq_len + 2 * m.padding[1] - m.dilation[1] * (m.kernel_size[1] - 1) - 1) // m.stride[1] + 1)
+            elif type(m) == nn.modules.pooling.AvgPool2d:
+                seq_len = ((seq_len + 2 * m.padding - m.kernel_size) // m.stride + 1)
         return seq_len.int()
 
     @classmethod
@@ -383,6 +366,8 @@ class DeepSpeechRNN(nn.Module): #Language Recognizer Module
         for m in self.conv.modules():
             if type(m) == nn.modules.conv.Conv2d:
                 seq_len = ((seq_len + 2 * m.padding[1] - m.dilation[1] * (m.kernel_size[1] - 1) - 1) // m.stride[1] + 1)
+            elif type(m) == nn.modules.pooling.AvgPool2d:
+                seq_len = ((seq_len + 2 * m.padding - m.kernel_size) // m.stride + 1)
         return seq_len.int()
 
     @classmethod
@@ -504,6 +489,8 @@ class DeepSpeech1DCNN(nn.Module): #Language Recognizer Module
         for m in self.conv.modules():
             if type(m) == nn.modules.conv.Conv1d:
                 seq_len = ((seq_len + 2 * m.padding[0] - m.dilation[0] * (m.kernel_size[0] - 1) - 1) // m.stride[0] + 1)
+            elif type(m) == nn.modules.pooling.AvgPool2d:
+                seq_len = ((seq_len + 2 * m.padding - m.kernel_size) // m.stride + 1)
         return seq_len.int()
 
     @classmethod

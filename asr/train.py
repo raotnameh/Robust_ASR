@@ -244,8 +244,6 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     
-    conv_params = model.conv_params
-
     for epoch in range(start_epoch, args.epochs):
         batch_time = AverageMeter()
         data_time = AverageMeter()
@@ -273,10 +271,7 @@ if __name__ == '__main__':
                 prev = 0
                 #print(target_sizes)
                 for idx,size in enumerate(target_sizes.data.cpu().numpy()):
-                    new_size = size.item()
-                    for key in conv_params:
-                        params = conv_params[key]
-                        new_size = int((new_size + 2*params['padding'] - params['time_kernel'])/params['stride'] + 1)
+                    new_size = output_sizes.data.cpu().numpy()[idx]
                     time_dur = time_durs.data.cpu().numpy()[idx]
                     new_target = list(targets.data.numpy()[prev:prev+size.item()])
                     new_target = shorten_target(new_target,new_size,time_dur)

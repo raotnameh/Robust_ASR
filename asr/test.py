@@ -33,19 +33,15 @@ def evaluate_acc(test_loader,device,model,save_output=None, verbose=False, half=
             inputs = inputs.half()
 
         out, output_sizes = model(inputs, input_sizes)
-
+        prev = 0
         for idx,size in enumerate(target_sizes.data.cpu().numpy()):
-            new_size = size.item()
-            for key in conv_params:
-                params = conv_params[key]
-                new_size = int((new_size + 2*params['padding'] - params['time_kernel'])/params['stride'] + 1)
-            prev = 0
+            new_size = output_sizes.data.cpu().numpy()[idx]
             time_dur = time_durs.data.cpu().numpy()[idx]
-            new_target = targets.data.numpy()[prev:size.item()]
+            new_target = targets.data.numpy()[prev:prev+size.item()]
             new_target = shorten_target(new_target,new_size,time_dur)
             #new_target += [0]*(new_timesteps-len(new_target))
             len_target = len(new_target)
-            prev = size.item()
+            prev += size.item()
             new_target = torch.Tensor(new_target).to(torch.long).to(device)
             correct+= float((out[idx].argmax(dim=1)[:len_target]==new_target).sum())
             total+= len_target
