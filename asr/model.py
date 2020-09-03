@@ -144,7 +144,8 @@ class DeepSpeech2DCNN(nn.Module): #Language Recognizer Module
             nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
             nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
-
+            nn.BatchNorm2d(32),
+            nn.Hardtanh(0, 20, inplace=True),
             ))
 
         # Based on above convolutions and spectrogram size using conv formula (W - F + 2P)/ S+1
@@ -270,36 +271,24 @@ class DeepSpeechRNN(nn.Module): #Language Recognizer Module
         num_classes = len(self.labels)
 
         self.conv = MaskConv2D(nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#320-->160
-            nn.Hardtanh(0,20,inplace=True),
-            nn.Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#160-->80
-            nn.BatchNorm2d(64),
+            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
+            nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
-            nn.AvgPool2d(2,stride=2),
-            nn.Conv2d(64, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#80-->40,
+            nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
+            nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#160-->80
-            nn.BatchNorm2d(128),
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.AvgPool2d(2,stride=2),
-            nn.Conv2d(128, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#80-->40,
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3)),#160-->80
-            nn.BatchNorm2d(256),
-            nn.Hardtanh(0, 20, inplace=True),
-            nn.AvgPool2d(2,stride=2)
             ))
-
+            
         # Based on above convolutions and spectrogram size using conv formula (W - F + 2P)/ S+1
         rnn_input_size = int(math.floor((sample_rate * window_size) / 2) + 1)
-        #print(rnn_input_size)
-        rnn_input_size = int(math.floor(rnn_input_size + 2 * 0 - 2) / 2 + 1)
-        #print(rnn_input_size)
-        rnn_input_size = int(math.floor(rnn_input_size + 2 * 0 - 2) / 2 + 1)
-        rnn_input_size = int(math.floor(rnn_input_size + 2 * 0 - 2) / 2 + 1)
+        for m in self.conv.modules():
+            if type(m) == nn.modules.conv.Conv2d:
+                rnn_input_size = ((rnn_input_size + 2 * m.padding[0] - m.dilation[0] * (m.kernel_size[0] - 1) - 1) // m.stride[0] + 1)
+            elif type(m) == nn.modules.pooling.AvgPool2d:
+                rnn_input_size = ((rnn_input_size + 2 * m.padding - m.kernel_size) // m.stride + 1)
         #rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
         #print(rnn_input_size)
-        rnn_input_size *= 256
+        rnn_input_size *= 32
 
         print('input size for TimeDistributed Dense Layer',rnn_input_size)
 
