@@ -21,21 +21,26 @@ parser = add_decoder_args(parser)
 
 def evaluate_acc(test_loader,device,model,save_output=None, verbose=False, half=False):
     model.eval()
-    conv_params = model.conv_params
+    #conv_params = model.conv_params
     correct,total = 0,0
     for _, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
         inputs, targets, input_percentages, target_sizes, time_durs = data
-        input_sizes = input_percentages.mul_(int(inputs.size(2))).int()
+        #print(inputs.size())
+        #print(input_percentages)
+        input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
         inputs = inputs.to(device)
         new_targets = []
 
         if half:
             inputs = inputs.half()
-
+        #print('IPT SIZES',input_sizes)
         out, output_sizes = model(inputs, input_sizes)
         prev = 0
+        #print('OPT',output_sizes)
+        #print('TGT SIZES', target_sizes)
         for idx,size in enumerate(target_sizes.data.cpu().numpy()):
             new_size = output_sizes.data.cpu().numpy()[idx]
+            #print(new_size)
             time_dur = time_durs.data.cpu().numpy()[idx]
             new_target = targets.data.numpy()[prev:prev+size.item()]
             new_target = shorten_target(new_target,new_size,time_dur)
@@ -44,6 +49,8 @@ def evaluate_acc(test_loader,device,model,save_output=None, verbose=False, half=
             prev += size.item()
             new_target = torch.Tensor(new_target).to(torch.long).to(device)
             correct+= float((out[idx].argmax(dim=1)[:len_target]==new_target).sum())
+            print('TEST TARGET',new_target)
+            print('TEST OUTPUT',out[idx].argmax(dim=1)[:len_target])
             total+= len_target
 
         output_data = []
@@ -51,6 +58,7 @@ def evaluate_acc(test_loader,device,model,save_output=None, verbose=False, half=
         if save_output is not None:
             output_data.append((out.cpu(),targets))
     
+    print(correct,total)
     accuracy = correct/total
     return accuracy*100,output_data
 

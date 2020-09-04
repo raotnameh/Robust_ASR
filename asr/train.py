@@ -16,9 +16,9 @@ from apex.parallel import DistributedDataParallel
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from logger import VisdomLogger, TensorBoardLogger
-from new_model import DeepSpeechRNN,DeepSpeech2DCNN,DeepSpeech1DCNN,supported_rnns
+from model import DeepSpeechRNN,DeepSpeech2DCNN,DeepSpeech1DCNN,supported_rnns
 from test import evaluate_acc #make a function evaluate accuracy
-from utils import reduce_tensor, check_loss, shorten_target
+from utils import reduce_tensor, check_loss, shorten_target, conv_weights_init
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--model-type',default='2dcnn',type=str,help='Model Architecture you want to train, can be 1dcnn,2dcnn,rnn')
@@ -184,21 +184,24 @@ if __name__ == '__main__':
                           noise_dir=args.noise_dir,
                           noise_prob=args.noise_prob,
                           noise_levels=(args.noise_min, args.noise_max))
-    if model_type == '2dcnn':
-        model = DeepSpeech2DCNN(labels=labels,audio_conf=audio_conf)
-    elif model_type == '1dcnn':
-        model = DeepSpeech1DCNN(labels=labels,audio_conf=audio_conf)
-    elif model_type == 'rnn':
-        rnn_type = args.rnn_type.lower()
-        model = DeepSpeechRNN(rnn_hidden_size=args.hidden_size,
-                        nb_layers=args.hidden_layers,
-                        labels=labels,
-                        rnn_type=supported_rnns[rnn_type],
-                        audio_conf=audio_conf,
-                        bidirectional=args.bidirectional)
-    else:
-        print('Wrong model type')
-        exit(1)
+        if model_type == '2dcnn':
+            model = DeepSpeech2DCNN(labels=labels,audio_conf=audio_conf)
+            model.apply(conv_weights_init)
+        elif model_type == '1dcnn':
+            model = DeepSpeech1DCNN(labels=labels,audio_conf=audio_conf)
+            model.apply(conv_weights_init)
+        elif model_type == 'rnn':
+            rnn_type = args.rnn_type.lower()
+            model = DeepSpeechRNN(rnn_hidden_size=args.hidden_size,
+                            nb_layers=args.hidden_layers,
+                            labels=labels,
+                            rnn_type=supported_rnns[rnn_type],
+                            audio_conf=audio_conf,
+                            bidirectional=args.bidirectional)
+            model.apply(conv_weights_init)
+        else:
+            print('Wrong model type')
+            exit(1)
 
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
@@ -242,7 +245,7 @@ if __name__ == '__main__':
     print(model)
     print("Number of parameters: %d" % DeepSpeech2DCNN.get_param_size(model))
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=0)
     
     for epoch in range(start_epoch, args.epochs):
         batch_time = AverageMeter()
@@ -276,6 +279,8 @@ if __name__ == '__main__':
                     new_target = list(targets.data.numpy()[prev:prev+size.item()])
                     new_target = shorten_target(new_target,new_size,time_dur)
                     new_target_t = torch.Tensor(new_target).to(torch.long).to(device)
+                    print('target',new_target_t)
+                    print('output',out[idx].argmax(dim=0)[:len(new_target)])
                     correct+= float((out[idx].argmax(dim=0)[:len(new_target)]==new_target_t).sum())
                     total+= len(new_target)
                     new_target += [0]*(new_timesteps-len(new_target))

@@ -1,7 +1,7 @@
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from new_model import DeepSpeech
+from model import DeepSpeechRNN
 
 
 def reduce_tensor(tensor, world_size, reduce_op_max=False):
@@ -32,7 +32,7 @@ def check_loss(loss, loss_value):
 
 
 def load_model(device, model_path, use_half):
-    model = DeepSpeech.load_model(model_path)
+    model = DeepSpeechRNN.load_model(model_path)
     model.eval()
     model = model.to(device)
     if use_half:
@@ -52,8 +52,8 @@ def shorten_target(target,new_size,time_dur):
     return new_target
 
 def conv_weights_init(m):
-    if isinstance(m, nn.Conv2d) or isinstance(m,nn.Conv1d):
+    if isinstance(m, nn.Conv2d):
         torch.nn.init.xavier_uniform_(m.weight)
         #print(m.bias)
-        if m.bias is not None and isinstance(m,nn.Conv2d):
-            torch.nn.init.xavier_uniform_(m.bias)
+        #if m.bias is not None and isinstance(m,nn.Conv2d):
+        #    torch.nn.init.xavier_uniform_(m.bias)
