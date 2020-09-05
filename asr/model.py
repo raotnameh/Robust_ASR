@@ -166,6 +166,15 @@ class DeepSpeech2DCNN(nn.Module): #Language Recognizer Module
 
         fully_connected = nn.Sequential(
             nn.Linear(rnn_input_size, 768, bias=False),
+            nn.LeakyReLU(),
+            nn.Linear(768, 768, bias=False),
+            nn.LeakyReLU(),
+            nn.Linear(768, 768, bias=False),
+            nn.LeakyReLU(),
+            nn.Linear(768, 768, bias=False),
+            nn.LeakyReLU(),
+            nn.Linear(768, 768, bias=False),
+            nn.LeakyReLU(),
             nn.Linear(768, num_classes, bias=False)
         )
 
