@@ -135,7 +135,6 @@ if __name__ == '__main__':
     save_folder = os.path.join(args.exp_name, 'models')
     loss_save = os.path.join(args.exp_name, 'train.log')
     config_save = os.path.join(args.exp_name, 'config.json')
-    final_model_path = os.path.join(args.exp_name, 'models', 'deepspeech_final.pth')
     os.makedirs(save_folder, exist_ok=True)  # Ensure save folder exists
 
     # save the experiment configuration.
@@ -304,8 +303,8 @@ if __name__ == '__main__':
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
-                loss = asr_loss + decoder_loss*alpha
+                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
+                loss = asr_loss + decoder_loss
                 p_loss = loss.item()
                 p_avg_loss += p_loss
 
@@ -339,7 +338,7 @@ if __name__ == '__main__':
                 z_ = z * m # Forget Operation
                 discriminator_out = discriminator(z_) # Discriminator network
                 # Loss
-                discriminator_loss = dis_loss(discriminator_out, accents_)*beta
+                discriminator_loss = dis_loss(discriminator_out, accents_) * beta
                 d_loss = discriminator_loss.item()
                 d_avg_loss += d_loss
                 
@@ -370,16 +369,16 @@ if __name__ == '__main__':
             discriminator_out = discriminator(z_) # Discriminator network
             asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
             # Loss
-            discriminator_loss = dis_loss(discriminator_out, accents)*beta
+            discriminator_loss = dis_loss(discriminator_out, accents) * beta
             p_d_loss = discriminator_loss.item()
             p_d_avg_loss += p_d_loss
-            mask_regulariser_loss = torch.bmm(m.view(m.shape[0], 1, -1), 1.-m.view(m.shape[0], -1, 1)).view(m.shape[0], 1)
+            mask_regulariser_loss = (m * (1-m)).mean() * gamma
 
             asr_out = asr_out.transpose(0, 1)  # TxNxH
             asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
             asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-            decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
-            loss = asr_loss + decoder_loss*alpha + mask_regulariser_loss.mean()*gamma
+            decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
+            loss = asr_loss + decoder_loss + mask_regulariser_loss
             p_loss = loss.item()
             p_avg_loss += p_loss
 
@@ -495,7 +494,7 @@ if __name__ == '__main__':
         
         if args.checkpoint:
             for k,v in models.items():
-                torch.save(v[0],f"{save_folder}{k}_{epoch+1}.pth")
+                torch.save(v[0], os.path.join(save_folder, f"{k}_{epoch+1}.pth"))
 
         
         # anneal lr
@@ -506,8 +505,9 @@ if __name__ == '__main__':
         print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
         if best_wer is None or best_wer > wer:
+            print("Updating the final model!")
             for k,v in models.items():
-                torch.save(v[0],f"{save_folder}{k}_{final}.pth")
+                torch.save(v[0], os.path.join(save_folder, f"{k}_final.pth"))
             best_wer = wer
 
         if not args.no_shuffle:
