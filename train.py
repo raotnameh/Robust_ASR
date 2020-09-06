@@ -462,10 +462,10 @@ if __name__ == '__main__':
             fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
             fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
             tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
-        class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+fps)
+        class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+tps)
         class_wise_f1 = 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
         macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
-        micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+fps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
+        micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
         micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
         
         print('Validation Summary Epoch: [{0}]\t'
