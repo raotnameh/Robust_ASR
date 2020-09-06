@@ -1,3 +1,5 @@
+#python train.py --enco-modules 4 --enco-res --forg-modules 4 --forg-res --train-manifest data/csvs/train_sorted_EN_US.csv --val-manifest data/csvs/dev_sorted.csv --cuda --rnn-type gru --hidden-layers 3 --momentum 0.94 --opt-level O1 --loss-scale 1.0 --hidden-size 1024 --epochs 100 --lr 0.0001 --batch-size 24 --gpu-rank 4 --checkpoint --save-folder /media/data_dump/hemant/rachit/test/invarient_Weights/ --update-rule 4 --mw-alpha 0.1 --mw-beta 0.1 --mw-gamma 0.1 --disc-modules 3 --disc-res 
+
 import argparse
 import json
 import os
@@ -47,9 +49,6 @@ parser.add_argument('--tensorboard', dest='tensorboard', action='store_true', he
 parser.add_argument('--log-dir', default='visualize/deepspeech_final', help='Location of tensorboard log')
 parser.add_argument('--log-params', dest='log_params', action='store_true', help='Log parameter values and gradients')
 parser.add_argument('--id', default='Deepspeech training', help='Identifier for visdom/tensorboard run')
-parser.add_argument('--save-folder', default='models/', help='Location to save epoch models')
-parser.add_argument('--model-path', default='models/deepspeech_final.pth',
-                    help='Location to save best validation model')
 parser.add_argument('--continue-from', default='', help='Continue from checkpoint model')
 parser.add_argument('--finetune', dest='finetune', action='store_true',
                     help='Finetune the model from checkpoint "continue_from"')
@@ -79,7 +78,11 @@ parser.add_argument('--rank', default=0, type=int,
 parser.add_argument('--enco-modules', dest='enco_modules', default=1, type=int,
                     help='Number of convolutional modules in Encoder net')
 parser.add_argument('--enco-res', dest='enco_res', action='store_true', default= False,
-                    help='Whether to keep in residual connections in encoder network')          
+                    help='Whether to keep in residual connections in encoder network')
+parser.add_argument('--disc-modules', dest='disc_modules', default=1, type=int,
+                    help='Number of convolutional modules in Encoder net')
+parser.add_argument('--disc-res', dest='disc_res', action='store_true', default= False,
+                    help='Whether to keep in residual connections in encoder network') 
 parser.add_argument('--forg-modules', dest='forg_modules', default=1, type=int,
                     help='Number of convolutional modules in Encoder net')
 parser.add_argument('--forg-res', dest='forg_res', action='store_true', default= False,
@@ -96,11 +99,17 @@ parser.add_argument('--update-rule', default=2, type=int,
 parser.add_argument('--train-asr', action='store_true',
                     help='training only the ASR')
 parser.add_argument('--dummy', action='store_true',
-                    help='do a dummy loop')
-parser.add_argument('--loss-save', type=str,
-                    help='name of the loss file to save as')   
+                    help='do a dummy loop') 
 parser.add_argument('--num-epochs', default=1, type=int,
-                    help='chossing the number of iterations to train the discriminator in each training iteration')                 
+                    help='choosing the number of iterations to train the discriminator in each training iteration')   
+parser.add_argument('--mw-alpha', type= float, default= 1,
+                    help= 'weight for reconstruction loss')
+parser.add_argument('--mw-beta', type= float, default= 1,
+                    help= 'weight for discriminator loss')              
+parser.add_argument('--mw-gamma', type= float, default= 1,
+                    help= 'weight for regularisation')             
+
+parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
 
 
 def to_np(x):
@@ -123,8 +132,15 @@ if __name__ == '__main__':
     torch.cuda.set_device(int(args.gpu_rank))
 
     #Where to save the models
-    save_folder = args.save_folder
+    save_folder = os.path.join(args.exp_name, 'models')
+    loss_save = os.path.join(args.exp_name, 'train.log')
+    config_save = os.path.join(args.exp_name, 'config.json')
+    final_model_path = os.path.join(args.exp_name, 'models', 'deepspeech_final.pth')
     os.makedirs(save_folder, exist_ok=True)  # Ensure save folder exists
+
+    # save the experiment configuration.
+    with open(config_save, 'w') as f:
+        json.dump(args.__dict__, f, indent=2)
 
     wer_results = torch.Tensor(args.epochs)
     best_wer = None
@@ -217,7 +233,7 @@ if __name__ == '__main__':
 
     # Discriminator
     if not args.train_asr:
-        discriminator = DiscimnateNet(classes=len(accent))
+        discriminator = DiscimnateNet(classes=len(accent),num_modules=args.disc_modules,residual_bool=args.disc_res)
         discriminator = discriminator.to(device)
         discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
@@ -254,6 +270,12 @@ if __name__ == '__main__':
     diff = np.array([ prob[i] - prob[-1-i] for i in range(len(prob))])
     diff /= len(train_sampler)*args.num_epochs
 
+    #reading weights for different losses
+    alpha = args.mw_alpha
+    beta = args.mw_beta
+    gamma = args.mw_gamma
+
+
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
@@ -283,7 +305,7 @@ if __name__ == '__main__':
                 asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
                 decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
-                loss = asr_loss + decoder_loss
+                loss = asr_loss + decoder_loss*alpha
                 p_loss = loss.item()
                 p_avg_loss += p_loss
 
@@ -317,7 +339,7 @@ if __name__ == '__main__':
                 z_ = z * m # Forget Operation
                 discriminator_out = discriminator(z_) # Discriminator network
                 # Loss
-                discriminator_loss = dis_loss(discriminator_out, accents_) 
+                discriminator_loss = dis_loss(discriminator_out, accents_)*beta
                 d_loss = discriminator_loss.item()
                 d_avg_loss += d_loss
                 
@@ -348,7 +370,7 @@ if __name__ == '__main__':
             discriminator_out = discriminator(z_) # Discriminator network
             asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
             # Loss
-            discriminator_loss = dis_loss(discriminator_out, accents)*0.5
+            discriminator_loss = dis_loss(discriminator_out, accents)*beta
             p_d_loss = discriminator_loss.item()
             p_d_avg_loss += p_d_loss
             mask_regulariser_loss = torch.bmm(m.view(m.shape[0], 1, -1), 1.-m.view(m.shape[0], -1, 1)).view(m.shape[0], 1)
@@ -357,7 +379,7 @@ if __name__ == '__main__':
             asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
             asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
             decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device)
-            loss = asr_loss + decoder_loss*0.2 + mask_regulariser_loss.mean()
+            loss = asr_loss + decoder_loss*alpha + mask_regulariser_loss.mean()*gamma
             p_loss = loss.item()
             p_avg_loss += p_loss
 
@@ -464,16 +486,16 @@ if __name__ == '__main__':
             a += f"{class_wise_recall[idx]},"
         for idx, accent_type in enumerate(accent_list):
             a += f"{class_wise_f1[idx]},"
-        a += f"{d_avg_loss},{p_avg_loss}\n"
+        a += f"{d_avg_loss},{p_avg_loss},{alpha},{beta},{gamma}\n"
 
-        with open(args.loss_save+'.txt', "w") as f:
+        with open(loss_save, "a") as f:
             f.write(a)
 
         d_avg_loss, p_avg_loss, p_d_avg_loss = 0, 0, 0
         
         if args.checkpoint:
             for k,v in models.items():
-                torch.save(v[0],f"{args.save_folder}{k}_{epoch+1}.pth")
+                torch.save(v[0],f"{save_folder}{k}_{epoch+1}.pth")
 
         
         # anneal lr
@@ -484,11 +506,11 @@ if __name__ == '__main__':
         print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
         # if best_wer is None or best_wer > wer:
-        #     print("Found better validated model, saving to %s" % args.model_path)
+        #     print("Found better validated model, saving to %s" % final_model_path)
         #     try:torch.save(DeepSpeech.serialize(model.module, epoch=epoch,wer_results=wer),
-        #                args.model_path)
+        #                final_model_path)
         #     except:torch.save(DeepSpeech.serialize(model, epoch=epoch,wer_results=wer),
-        #                args.model_path)
+        #                final_model_path)
         #     best_wer = wer
 
         if not args.no_shuffle:
