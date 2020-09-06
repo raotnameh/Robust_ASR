@@ -505,13 +505,10 @@ if __name__ == '__main__':
                     g['lr'] = g['lr'] / args.learning_anneal
         print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
-        # if best_wer is None or best_wer > wer:
-        #     print("Found better validated model, saving to %s" % final_model_path)
-        #     try:torch.save(DeepSpeech.serialize(model.module, epoch=epoch,wer_results=wer),
-        #                final_model_path)
-        #     except:torch.save(DeepSpeech.serialize(model, epoch=epoch,wer_results=wer),
-        #                final_model_path)
-        #     best_wer = wer
+        if best_wer is None or best_wer > wer:
+            for k,v in models.items():
+                torch.save(v[0],f"{save_folder}{k}_{final}.pth")
+            best_wer = wer
 
         if not args.no_shuffle:
             print("Shuffling batches...")
