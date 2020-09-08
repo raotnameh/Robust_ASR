@@ -322,56 +322,47 @@ class ForgetNet(nn.Module):
         return x
 
 class DiscimnateNet(nn.Module):
-    def __init__(self,classes, num_modules, residual_bool):
+    def __init__(self,classes, num_modules=None, residual_bool):
         super(DiscimnateNet, self).__init__()
-        # self.conv_1 = nn.Conv2d(32, 64, kernel_size=(21, 11), stride=(1, 1), padding=(10, 5))
-        # self.conv_2 = nn.Conv2d(64, 128, kernel_size=(11, 11), stride=(1, 1), padding=(5, 5))
-        # self.conv_3 = nn.Conv2d(128, 256, kernel_size=(5, 11), stride=(1, 1), padding=(2, 5))
+
         self.adaptive_pooling = nn.AdaptiveAvgPool2d((2, 2))
         self.linear_1 = torch.nn.Linear(1024, classes)
-        # self.batch_norm_1 = nn.BatchNorm2d(64)
-        # self.batch_norm_2 = nn.BatchNorm2d(128)
-        # self.batch_norm_3 = nn.BatchNorm2d(256)
-        self.leaky_relu = nn.LeakyReLU(0.2, inplace=True)
         self.sigmoid = nn.Sigmoid()
 
-        assert(num_modules >= 1)
-        self.modules_list = []
-        for i in range(num_modules):
-            if i==0:
-                input_channels = 32
-            else:
-                input_channels = 256
-            self.modules_list.append(
-                                    nn.ModuleDict({
-                                    'conv_1': nn.Conv2d(input_channels, 64, kernel_size=(21, 11), stride=(1, 1), padding=(10, 5)),
-                                    'batch_norm_1': nn.BatchNorm2d(64),
-                                    'conv_2': nn.Conv2d(64, 128, kernel_size=(11, 11), stride=(1, 1), padding=(5, 5)),
-                                    'batch_norm_2': nn.BatchNorm2d(128),
-                                    'conv_3': nn.Conv2d(128, 256, kernel_size=(5, 11), stride=(1, 1), padding=(2, 5)),
-                                    'batch_norm_3': nn.BatchNorm2d(256),
-                                    })
+        self.base = nn.Sequential(nn.Conv2d(input_channels, 64, kernel_size=(21, 11), stride=(1, 1), padding=(10, 5)),
+                                    nn.BatchNorm2d(64),
+                                    nn.LeakyReLU(0.2, inplace=True),
+                                    nn.Conv2d(64, 128, kernel_size=(11, 11), stride=(1, 1), padding=(5, 5)),
+                                    nn.BatchNorm2d(128),
+                                    nn.LeakyReLU(0.2, inplace=True),
+                                    nn.Conv2d(128, 256, kernel_size=(5, 11), stride=(1, 1), padding=(2, 5)),
+                                    nn.BatchNorm2d(256),
+                                    nn.LeakyReLU(0.2, inplace=True),
                                     )
-        self.modules_list = nn.ModuleList(self.modules_list)
-        # self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
+        
+        cnns = []
+        for x in range(num_modules):
+            cnn = nn.Sequential(nn.Conv2d(256, 256, kernel_size=(5, 11), stride=(1, 1), padding=(2, 5)),
+                                nn.BatchNorm2d(256),
+                                nn.LeakyReLU(0.2, inplace=True),
+                                )
+            cnns.append(('%d' % (x + 1), cnn))
+        self.cnns = nn.Sequential(OrderedDict(cnns))
+
         self.residual = residual_bool
 
 
     def forward(self, input_x):
-        # x = self.leaky_relu(self.batch_norm_1(self.conv_1(x)))
-        # x = self.leaky_relu(self.batch_norm_2(self.conv_2(x)))
-        # x = self.leaky_relu(self.batch_norm_3(sxelf.conv_3(x)))
+        x =  self.base(input_x)
         # print("Shape: "+str(input_x.shape))
-        for i, module_dict in enumerate(self.modules_list):
-            x = self.leaky_relu(module_dict['batch_norm_1'](module_dict['conv_1'](input_x)))
-            x = self.leaky_relu(module_dict['batch_norm_2'](module_dict['conv_2'](x)))
-            x = module_dict['conv_3'](x)
-            if i != 0 and self.residual: # Residual connection
-                # print(x.shape,input_x.shape)
+        for cnn in self.cnns:
+            input_x = cnn(x)
+            if self.residual: # Residual connection
                 x = x+input_x
-            input_x = x = self.leaky_relu(module_dict['batch_norm_3'](x))
+            else: 
+                x = input_x
 
-        x = self.leaky_relu(self.adaptive_pooling(x))
+        x = self.adaptive_pooling(x)
         x = self.sigmoid(self.linear_1(torch.flatten(x, start_dim=1)))
         return x
 
@@ -398,18 +389,9 @@ class Encoder(nn.Module):
         self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
         self.residual = residual_bool
 
-        # self.conv = MaskConv(nn.Sequential(
-        #     nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(20, 5)),
-        #     nn.BatchNorm2d(32),
-        #     nn.Hardtanh(0, 20, inplace=True),
-        #     nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), padding=(10, 5)),
-        #     nn.BatchNorm2d(32),
-        #     nn.Hardtanh(0, 20, inplace=True)
-        # ))
-
+        
     def forward(self, input_x, lengths):
-        # x = self.hard_tanh(self.batch_norm_1(self.conv_1(x)))
-        # x = self.hard_tanh(self.batch_norm_2(self.conv_2(x)))
+
         for i, module_dict in enumerate(self.modules_list):
             x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](input_x)))
             x = module_dict['conv_2'](x)
@@ -418,8 +400,6 @@ class Encoder(nn.Module):
             input_x = x = self.hard_tanh(module_dict['batch_norm_2'](x))
         return x, self.get_seq_lens(lengths)
 
-        # x, _ = self.conv(x,lengths)
-        # return x, self.get_seq_lens(lengths)
 
     def get_seq_lens(self, input_length):
         """
