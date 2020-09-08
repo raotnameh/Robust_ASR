@@ -322,14 +322,14 @@ class ForgetNet(nn.Module):
         return x
 
 class DiscimnateNet(nn.Module):
-    def __init__(self,classes, num_modules=None, residual_bool):
+    def __init__(self,classes, residual_bool, num_modules=None):
         super(DiscimnateNet, self).__init__()
 
         self.adaptive_pooling = nn.AdaptiveAvgPool2d((2, 2))
         self.linear_1 = torch.nn.Linear(1024, classes)
         self.sigmoid = nn.Sigmoid()
 
-        self.base = nn.Sequential(nn.Conv2d(input_channels, 64, kernel_size=(21, 11), stride=(1, 1), padding=(10, 5)),
+        self.base = nn.Sequential(nn.Conv2d(32, 64, kernel_size=(21, 11), stride=(1, 1), padding=(10, 5)),
                                     nn.BatchNorm2d(64),
                                     nn.LeakyReLU(0.2, inplace=True),
                                     nn.Conv2d(64, 128, kernel_size=(11, 11), stride=(1, 1), padding=(5, 5)),
