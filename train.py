@@ -34,7 +34,6 @@ parser.add_argument('--hidden-size', default=800, type=int, help='Hidden size of
 parser.add_argument('--hidden-layers', default=5, type=int, help='Number of RNN layers')
 parser.add_argument('--rnn-type', default='gru', help='Type of the RNN. rnn|gru|lstm are supported')
 parser.add_argument('--epochs', default=70, type=int, help='Number of training epochs')
-parser.add_argument('--min-epochs', dest='min_epochs', default=70, type=int, help='Number of minimum training epochs, before testing patience')
 parser.add_argument('--patience', dest='patience', default=5, type=int, help='Patience epochs.')
 parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
@@ -512,11 +511,10 @@ if __name__ == '__main__':
             best_wer = wer
             poor_wer_list = []
         else:
-            if epoch >= args.min_epochs:
-                poor_wer_list.append(wer)
-                if len(poor_wer_list) >= args.patience:
-                    print("Exiting training loop...")
-                    exit()
+            poor_wer_list.append(wer)
+            if len(poor_wer_list) >= args.patience:
+                print("Exiting training loop...")
+                exit()
 
         if not args.no_shuffle:
             print("Shuffling batches...")
