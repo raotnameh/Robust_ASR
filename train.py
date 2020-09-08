@@ -1,5 +1,3 @@
-#python train.py --enco-modules 4 --enco-res --forg-modules 4 --forg-res --train-manifest data/csvs/train_sorted_EN_US.csv --val-manifest data/csvs/dev_sorted.csv --cuda --rnn-type gru --hidden-layers 3 --momentum 0.94 --opt-level O1 --loss-scale 1.0 --hidden-size 1024 --epochs 100 --lr 0.0001 --batch-size 24 --gpu-rank 4 --checkpoint --save-folder /media/data_dump/hemant/rachit/test/invarient_Weights/ --update-rule 4 --mw-alpha 0.1 --mw-beta 0.1 --mw-gamma 0.1 --disc-modules 3 --disc-res 
-
 import argparse
 import json
 import os
@@ -36,6 +34,7 @@ parser.add_argument('--hidden-size', default=800, type=int, help='Hidden size of
 parser.add_argument('--hidden-layers', default=5, type=int, help='Number of RNN layers')
 parser.add_argument('--rnn-type', default='gru', help='Type of the RNN. rnn|gru|lstm are supported')
 parser.add_argument('--epochs', default=70, type=int, help='Number of training epochs')
+parser.add_argument('--patience', dest='patience', default=5, type=int, help='Patience epochs.')
 parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
@@ -274,6 +273,7 @@ if __name__ == '__main__':
     beta = args.mw_beta
     gamma = args.mw_gamma
 
+    poor_wer_list = []
 
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
@@ -509,6 +509,12 @@ if __name__ == '__main__':
             for k,v in models.items():
                 torch.save(v[0], os.path.join(save_folder, f"{k}_final.pth"))
             best_wer = wer
+            poor_wer_list = []
+        else:
+            poor_wer_list.append(wer)
+            if len(poor_wer_list) >= args.patience:
+                print("Exiting training loop...")
+                exit()
 
         if not args.no_shuffle:
             print("Shuffling batches...")
