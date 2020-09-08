@@ -1,5 +1,5 @@
-#Models
-*.pth
+#save folder ignored
+save/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
