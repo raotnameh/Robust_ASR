@@ -2,7 +2,7 @@ import argparse
 import os
 
 def run(alphaValue,cnt):
-    command = "python train.py --enco-modules 2 --enco-res --train-manifest data/csvs/train_sorted.csv --val-manifest data/csvs/dev_sorted.csv --cuda --rnn-type gru --hidden-layers 5 --opt-level O1 --loss-scale 1.0 --hidden-size 1024 --epochs 25 --lr 0.001 --batch-size 32 --gpu-rank 4 --update-rule 1 --exp-name /media/data_dump/hemant/rachit/Robust_ASR/save/train_Asr_experimentation/experiment_1/exp_"+str(cnt) +" --mw-alpha " + str(alphaValue) + " --train-asr"
+    command = "python train.py --enco-modules 1 --enco-res --train-manifest data/csvs/train_sorted.csv --val-manifest data/csvs/dev_sorted.csv --cuda --rnn-type gru --hidden-layers 5 --opt-level O1 --loss-scale 1.0 --hidden-size 1024 --epochs 25 --lr 0.001 --batch-size 32 --gpu-rank 4 --update-rule 1 --exp-name /media/data_dump/hemant/rachit/Robust_ASr/save/train_Asr_experimentation/experiment_1/exp_"+str(cnt) +" --mw-alpha " + str(alphaValue) + " --train-asr"
 
     os.system(command)
 

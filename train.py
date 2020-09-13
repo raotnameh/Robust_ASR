@@ -33,8 +33,8 @@ parser.add_argument('--window', default='hamming', help='Window type for spectro
 parser.add_argument('--hidden-size', default=800, type=int, help='Hidden size of RNNs')
 parser.add_argument('--hidden-layers', default=5, type=int, help='Number of RNN layers')
 parser.add_argument('--rnn-type', default='gru', help='Type of the RNN. rnn|gru|lstm are supported')
-parser.add_argument('--epochs', default=70, type=int, help='Number of training epochs')
-parser.add_argument('--patience', dest='patience', default=5, type=int, help='Patience epochs.')
+parser.add_argument('--epochs', default=1000, type=int, help='Number of training epochs')
+parser.add_argument('--patience', dest='patience', default=10, type=int, help='Patience epochs.')
 parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
@@ -487,7 +487,7 @@ if __name__ == '__main__':
             a += f"{class_wise_f1[idx]},"
         a += f"{d_avg_loss},{p_avg_loss},{alpha},{beta},{gamma}\n"
 
-        with open(loss_save, "a") as f:
+        with open(loss_save, "w") as f:
             f.write(a)
 
         d_avg_loss, p_avg_loss, p_d_avg_loss = 0, 0, 0
