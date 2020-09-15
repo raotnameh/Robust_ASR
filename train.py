@@ -5,6 +5,7 @@ import random
 import time, math
 import torch
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 import numpy as np
 from warpctc_pytorch import CTCLoss
@@ -130,8 +131,9 @@ if __name__ == '__main__':
     device = torch.device("cuda" if args.cuda else "cpu")
     torch.cuda.set_device(int(args.gpu_rank))
 
-    #Where to save the models
+    #Where to save the models and training's metadata
     save_folder = os.path.join(args.exp_name, 'models')
+    tbd_logs = os.path.join(args.exp_name, 'tbd_logdir')
     loss_save = os.path.join(args.exp_name, 'train.log')
     config_save = os.path.join(args.exp_name, 'config.json')
     os.makedirs(save_folder, exist_ok=True)  # Ensure save folder exists
@@ -139,6 +141,9 @@ if __name__ == '__main__':
     # save the experiment configuration.
     with open(config_save, 'w') as f:
         json.dump(args.__dict__, f, indent=2)
+
+    # Instantiating tensorboard writer.
+    writer = SummaryWriter(tbd_logs)
 
     wer_results = torch.Tensor(args.epochs)
     best_wer = None
@@ -290,7 +295,6 @@ if __name__ == '__main__':
             input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
             inputs = inputs.to(device)
 
-
             if args.train_asr: # Only trainig the ASR component
                 
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
@@ -312,6 +316,9 @@ if __name__ == '__main__':
                 ed_optimizer.step()
                 asr_optimizer.step()
 
+                # Logging to tensorboard and train.log.
+                writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
+                writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
 
@@ -321,6 +328,7 @@ if __name__ == '__main__':
                 prob = [i*0 for i in prob]
                 prob[-1] = 1
             update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
+            d_avg_loss_iter = eps
             for k, (data_) in enumerate(disc_train_loader): #updating the discriminator only  
                 if k == update_rule: break 
                 
@@ -341,12 +349,16 @@ if __name__ == '__main__':
                 discriminator_loss = dis_loss(discriminator_out, accents_) * beta
                 d_loss = discriminator_loss.item()
                 d_avg_loss += d_loss
+                d_avg_loss_iter += d_loss
                 
                 discriminator_loss.backward()
                 discriminator_optimizer.step()
 
                 print(f"Epoch: [{epoch+1}][{i+1,k+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
+            # Logging to tensorboard.
+            writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_avg_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
+            writer.add_scalar('Train/Discriminator-Per-Iteration-Loss', d_avg_loss_iter/(update_rule+eps), len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
 
             # Random labels for adversarial learning of the predictor network               
             [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
@@ -389,6 +401,11 @@ if __name__ == '__main__':
             asr_optimizer.step()
             fnet_optimizer.step()
 
+            # Logging to tensorboard and train.log.
+            writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
+            writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
+            writer.add_scalar('Train/Dummy-Discriminator-Per-Iteration-Loss', p_d_loss, len(train_sampler)*epoch+i+1) # Dummy Disctrimintaor loss in the current iteration.
+            writer.add_scalar('Train/Dummy-Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
             print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
             
         d_avg_loss /= d_counter
@@ -466,6 +483,14 @@ if __name__ == '__main__':
         macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
         micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
         micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
+
+        # Logging to tensorboard.
+        writer.add_scalar('Validation/Average-WER', wer, epoch+1)
+        writer.add_scalar('Validation/Average-CER', cer, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Accuracy', num/length *100, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Precision', micro_precision, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Recall', micro_recall, epoch+1)
+        writer.add_scalar('Validation/Discriminator-F1', micro_f1, epoch+1)
         
         print('Validation Summary Epoch: [{0}]\t'
                 'Average WER {wer:.3f}\t'
@@ -514,8 +539,11 @@ if __name__ == '__main__':
             poor_wer_list.append(wer)
             if len(poor_wer_list) >= args.patience:
                 print("Exiting training loop...")
+                writer.close()
                 exit()
 
         if not args.no_shuffle:
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
+
+    writer.close()

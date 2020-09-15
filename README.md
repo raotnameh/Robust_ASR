@@ -37,3 +37,9 @@ Hours of speech: 1.33 <br />
 ```
 python train.py --enco-modules 4 --enco-res --forg-modules 4 --forg-res --train-manifest data/train_sorted_EN_US.csv --val-manifest data/dev_sorted.csv --cuda --rnn-type gru --hidden-layers 3 --momentum 0.94 --opt-level O1 --loss-scale 1.0 --hidden-size 1024 --epochs 100 --lr 0.0001 --batch-size 24 --gpu-rank 4 --checkpoint --save-folder /media/data_dump/hemant/rachit/invarient_Weights/ --update-rule 4
 ```
+
+## Tensorboard Logging
+1. After starting trainig, start tensorboad server on server at some port XXXX, using following command: tensorboard --logdir=path_to_tbd_logdir_folder_inside_save_directory --port=XXXX
+2. On your local-machine execute port forwarding command: ssh -L YYYY:localhost:XXXX hemant@192.168.3.6 
+3. Open brower and hit: http://localhost:YYYY/
+
