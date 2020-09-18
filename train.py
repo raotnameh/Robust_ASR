@@ -228,11 +228,11 @@ if __name__ == '__main__':
     eps = 0.0000000001 # epsilon value
 
     # Forget_net
-    if not args.train_asr:
-        fnet = ForgetNet(num_modules = args.forg_modules, residual_bool = args.forg_res, hard_mask_bool = True)
-        fnet = fnet.to(device)
-        fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        models['forget_net'] = [fnet, None, fnet_optimizer]
+    # if not args.train_asr:
+    #     fnet = ForgetNet(num_modules = args.forg_modules, residual_bool = args.forg_res, hard_mask_bool = True)
+    #     fnet = fnet.to(device)
+    #     fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+    #     models['forget_net'] = [fnet, None, fnet_optimizer]
 
     # Discriminator
     if not args.train_asr:
@@ -342,8 +342,8 @@ if __name__ == '__main__':
                 accents_ = torch.tensor(accents_).to(device)
                 # Forward pass
                 z,updated_lengths = encoder(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Encoder network
-                m = fnet(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Forget network
-                z_ = z * m # Forget Operation
+                # m = fnet(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Forget network
+                z_ = z # * m # Forget Operation
                 discriminator_out = discriminator(z_) # Discriminator network
                 # Loss
                 discriminator_loss = dis_loss(discriminator_out, accents_) * beta
@@ -364,42 +364,42 @@ if __name__ == '__main__':
             [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
             p_counter += 1
             # Shuffling the elements of alist s.t. elements are not same at the same indices
-            dummy = [] 
-            for acce in accents:
-                while True:
-                    d = random.randint(0,len(accent)-1)
-                    if acce != d:
-                        dummy.append(d)
-                        break
-            accents = torch.tensor(dummy).to(device)
+            #dummy = [] 
+            #for acce in accents:
+             #   while True:
+              #      d = random.randint(0,len(accent)-1)
+               #     if acce != d:
+                #        dummy.append(d)
+                 #       break
+           # accents = torch.tensor(dummy).to(device)
 
             # Forward pass
             z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
             decoder_out = decoder(z) # Decoder network
-            m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
-            z_ = z * m # Forget Operation
-            discriminator_out = discriminator(z_) # Discriminator network
+            # m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+            z_ = z # * m # Forget Operation
+            # discriminator_out = discriminator(z_) # Discriminator network
             asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
             # Loss
-            discriminator_loss = dis_loss(discriminator_out, accents) * beta
-            p_d_loss = discriminator_loss.item()
+            # discriminator_loss = dis_loss(discriminator_out, accents) * beta
+            p_d_loss = 0. # discriminator_loss.item()
             p_d_avg_loss += p_d_loss
-            mask_regulariser_loss = (m * (1-m)).mean() * gamma
+            # mask_regulariser_loss = (m * (1-m)).mean() * gamma
 
             asr_out = asr_out.transpose(0, 1)  # TxNxH
             asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
             asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
             decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
-            loss = asr_loss + decoder_loss + mask_regulariser_loss
+            loss = asr_loss + decoder_loss # + mask_regulariser_loss
             p_loss = loss.item()
             p_avg_loss += p_loss
 
-            discriminator_loss.backward(retain_graph=True)
-            ed_optimizer.zero_grad()
+            # discriminator_loss.backward(retain_graph=True)
+            # ed_optimizer.zero_grad()
             loss.backward()
             ed_optimizer.step()
             asr_optimizer.step()
-            fnet_optimizer.step()
+            # fnet_optimizer.step()
 
             # Logging to tensorboard and train.log.
             writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
@@ -433,8 +433,8 @@ if __name__ == '__main__':
                 # Forward pass
                 if not args.train_asr:
                     z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                    m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
-                    z_ = z * m # Forget Operation
+                    # m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+                    z_ = z # * m # Forget Operation
                     discriminator_out = discriminator(z_) # Discriminator network
                     asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
                 else:

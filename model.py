@@ -332,12 +332,15 @@ class DiscimnateNet(nn.Module):
         self.base = nn.Sequential(nn.Conv2d(32, 64, kernel_size=(21, 11), stride=(1, 1), padding=(10, 5)),
                                     nn.BatchNorm2d(64),
                                     nn.LeakyReLU(0.2, inplace=True),
+                                    nn.Dropout(0.2),
                                     nn.Conv2d(64, 128, kernel_size=(11, 11), stride=(1, 1), padding=(5, 5)),
                                     nn.BatchNorm2d(128),
                                     nn.LeakyReLU(0.2, inplace=True),
+                                    nn.Dropout(0.2),
                                     nn.Conv2d(128, 256, kernel_size=(5, 11), stride=(1, 1), padding=(2, 5)),
                                     nn.BatchNorm2d(256),
                                     nn.LeakyReLU(0.2, inplace=True),
+                                    nn.Dropout(0.2),
                                     )
         
         cnns = []
@@ -345,6 +348,7 @@ class DiscimnateNet(nn.Module):
             cnn = nn.Sequential(nn.Conv2d(256, 256, kernel_size=(5, 11), stride=(1, 1), padding=(2, 5)),
                                 nn.BatchNorm2d(256),
                                 nn.LeakyReLU(0.2, inplace=True),
+                                nn.Dropout(0.2),
                                 )
             cnns.append(('%d' % (x + 1), cnn))
         self.cnns = nn.Sequential(OrderedDict(cnns))
