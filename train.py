@@ -346,7 +346,7 @@ if __name__ == '__main__':
                 z_ = z * m # Forget Operation
                 discriminator_out = discriminator(z_) # Discriminator network
                 # Loss
-                discriminator_loss = dis_loss(discriminator_out, accents_) * beta
+                discriminator_loss = dis_loss(discriminator_out, accents_)
                 d_loss = discriminator_loss.item()
                 d_avg_loss += d_loss
                 d_avg_loss_iter += d_loss
