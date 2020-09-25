@@ -31,6 +31,21 @@ def check_loss(loss, loss_value):
     return loss_valid, error
 
 
+def load_model_components(device, model_path, forget, discriminator, ckpt_id, use_half):
+    encoder_model = torch.load(os.path.join(model_path, 'encoder_{}.pth'.format(ckpt_id)))
+    forget_model = torch.load(os.path.join(model_path, 'forget_net_{}.pth'.format(ckpt_id))) if forget else None
+    disc_model = torch.load(os.path.join(model_path, 'discrimator_{}.pth'.format(ckpt_id))) if discriminator else None
+    asr_model = torch.load(os.path.join(model_path, 'predictor_{}.pth'.format(ckpt_id)))
+    model_components = [encoder_model, forget_model, disc_model, asr_model]
+    for i in range(len(model_components)):
+        if model_components[i] is None:
+            continue
+        model_components[i].eval()
+        model_components[i] = model_components[i].to(device)
+        if use_half:
+            model_components[i] = model_components[i].half()
+    return model_components # e, f, d, a
+
 def load_model(device, model_path, use_half):
     model = DeepSpeech.load_model(model_path)
     model.eval()

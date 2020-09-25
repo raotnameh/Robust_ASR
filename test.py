@@ -5,11 +5,11 @@ from tqdm import tqdm
 
 from data.data_loader import SpectrogramDataset, AudioDataLoader
 from decoder import GreedyDecoder
-from opts import add_decoder_args, add_inference_args
 from utils import load_model
 
+from data.data_loader import accent as accent_dict
+
 parser = argparse.ArgumentParser(description='DeepSpeech transcription')
-parser = add_inference_args(parser)
 parser.add_argument('--test-manifest', metavar='DIR',
                     help='path to validation manifest csv', default='data/test_manifest.csv')
 parser.add_argument('--batch-size', default=20, type=int, help='Batch size for testing')
@@ -17,50 +17,91 @@ parser.add_argument('--num-workers', default=32, type=int, help='Number of worke
 parser.add_argument('--verbose', action="store_true", help="print out decoded output and error of each sample")
 parser.add_argument('--save-output', default="test", help="Saves output of model from test to this file_path")
 parser.add_argument('--gpu', dest='gpu', type=str, help='GPU to be used', required=True)
-parser = add_decoder_args(parser)
+# checkpoint loading args
+parser.add_argument('--model-path', dest='model_path', type=str, help='Path to "model" directory, where weights of component of models are saved', required=True)
+parser.add_argument('--forget', dest='forget', action='store_true', required=True, help='Whether to include forget module or not')
+parser.add_argument('--discriminate', dest='discriminate', action='store_true', required=True, help='Whether to include discriminator module or not')
+parger.add_argument('--ckpt-id', dest='ckpt_id', default='final', help='checkpoint id to load from model_path directory for component modules')
+# decoder args
+parser.add_argument('--decoder', dest='decoder', default='greedy', help='type of decoder to use.')
 
+# model compnents: e, f, d, asr
+def forward_call(model_components, inputs, inputs_sizes): 
+    z, updated_lengths = model_components[0](inputs, inputs_sizes)
+    if model_components[1] is not None: # forget net is present
+        m = model_components[1](inputs, inputs_sizes)
+        z = z * m
+    disc_out = model_components[2](z) if model_components[2] is not None else None # discrmininator is present or not
+    asr_out, asr_out_sizes = model_components[3](z, updated_lengths)
+    return (asr_out, asr_out_sizes), disc_out
 
-def evaluate(test_loader, device, model, decoder, target_decoder, save_output=None, verbose=False, half=False):
-    model.eval()
-    total_cer, total_wer, num_tokens, num_chars = 0, 0, 0, 0
-    output_data = []
-    for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
-        inputs, targets, input_percentages, target_sizes = data
-        input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
-        inputs = inputs.to(device)
-        if half:
-            inputs = inputs.half()
-        # unflatten targets
-        split_targets = []
-        offset = 0
-        for size in target_sizes:
-            split_targets.append(targets[offset:offset + size])
-            offset += size
+def evaluate(test_loader, device, model_components, target_decoder, save_output=None, verbose=False, half=False):
+    eps = 0.0000000001
+    accent = list(accent_dict.values())
+    with torch.no_grad():
+        total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
+        conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
+        tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
+        length, num = eps, eps
+        for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
 
-        out, output_sizes = model(inputs, input_sizes)
+            # Data loading
+            inputs, targets, input_percentages, target_sizes, accents = data
+            input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+            inputs = inputs.to(device)
+            
+            # Forward pass
+            (asr_out, asr_out_sizes), disc_out = forward_call(model_components, inputs, input_sizes.type(torch.LongTensor).to(device))
 
-        decoded_output, _ = decoder.decode(out, output_sizes)
-        target_strings = target_decoder.convert_to_strings(split_targets)
+            # Predictor metric
+            split_targets = []
+            offset = 0
+            for size in target_sizes:
+                split_targets.append(targets[offset:offset + size])
+                offset += size
+            decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
+            target_strings = target_decoder.convert_to_strings(split_targets)
 
-        if save_output is not None:
-            # add output to data array, and continue
-            output_data.append((out.cpu(), output_sizes, target_strings))
-        for x in range(len(target_strings)):
-            transcript, reference = decoded_output[x][0], target_strings[x][0]
-            wer_inst = decoder.wer(transcript, reference)
-            cer_inst = decoder.cer(transcript, reference)
-            total_wer += wer_inst
-            total_cer += cer_inst
-            num_tokens += len(reference.split())
-            num_chars += len(reference.replace(' ', ''))
-            if verbose:
-                print("Ref:", reference.lower())
-                print("Hyp:", transcript.lower())
-                print("WER:", float(wer_inst) / len(reference.split()),
-                      "CER:", float(cer_inst) / len(reference.replace(' ', '')), "\n")
-    wer = float(total_wer) / num_tokens
-    cer = float(total_cer) / num_chars
-    return wer * 100, cer * 100, output_data
+            for x in range(len(target_strings)):
+                transcript, reference = decoded_output[x][0], target_strings[x][0]
+                wer_inst = target_decoder.wer(transcript, reference)
+                cer_inst = target_decoder.cer(transcript, reference)
+                total_wer += wer_inst
+                total_cer += cer_inst
+                num_tokens += len(reference.split())
+                num_chars += len(reference.replace(' ', ''))
+
+            wer = float(total_wer) / num_tokens
+            cer = float(total_cer) / num_chars
+    
+            if disc_out is not None:
+                # Discriminator metrics: fill in the confusion matrix.
+                out, predicted = torch.max(discriminator_out, 1)
+                for j in range(len(accents)):
+                    if accents[j] == predicted[j].item():
+                        num = num + 1
+                    conf_mat[accents[j], predicted[j].item()] += 1
+                length = length + len(accents)
+
+    if model_components[2] is not None: # if discriminator is present.
+        # Discriminator metrics: compute metrics using confustion metrics.
+        for acc_type in range(len(accent)):
+            tps[acc_type] = conf_mat[acc_type, acc_type]
+            fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
+            fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
+            tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
+        class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+tps)
+        class_wise_f1 = 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
+        macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
+        micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
+        micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
+        print('Discriminator accuracy (micro) {acc: .3f}\t'
+              'Discriminator precision (micro) {pre: .3f}\t'
+              'Discriminator recall (micro) {rec: .3f}\t'
+              'Discriminator F1 (micro) {f1: .3f}\t'.format(acc_ = num/length *100 , acc=micro_accuracy, pre=micro_precision, rec=micro_recall, f1=micro_f1))
+    
+    print('Average WER {wer:.3f}\t'
+          'Average CER {cer:.3f}\t'.format(wer=wer, cer=cer))
 
 
 if __name__ == '__main__':
@@ -68,8 +109,7 @@ if __name__ == '__main__':
     torch.set_grad_enabled(False)
     device = torch.device("cuda" if args.cuda else "cpu")
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
-    #device = torch.device("cuda:0" if args.cuda else "cpu")
-    model = load_model(device, args.model_path, args.half)
+    model_components = load_model_components(device, args.model_path, args.forget, args.discriminator, args.ckpt_id, args.half)
     
     if args.decoder == "beam":
         from decoder import BeamCTCDecoder
@@ -86,7 +126,7 @@ if __name__ == '__main__':
         decoder = GreedyDecoder(model.labels, blank_index=model.labels.index('_'))
     else:
         decoder = None
-    target_decoder = GreedyDecoder(model.labels, blank_index=model.labels.index('_'))
+    
     test_dataset = SpectrogramDataset(audio_conf=model.audio_conf,
                                       manifest_filepath=args.test_manifest,
                                       labels=model.labels,
@@ -94,11 +134,11 @@ if __name__ == '__main__':
     test_loader = AudioDataLoader(test_dataset,
                                   batch_size=args.batch_size,
                                   num_workers=args.num_workers)
+
     wer, cer, output_data = evaluate(test_loader=test_loader,
                                      device=device,
-                                     model=model,
+                                     model_components=model_components,
                                      decoder=decoder,
-                                     target_decoder=target_decoder,
                                      save_output=args.save_output,
                                      verbose=args.verbose,
                                      half=args.half)
