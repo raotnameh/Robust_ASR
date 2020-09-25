@@ -33,9 +33,14 @@ This is unseen accent data <br />
 Contains 1 accent: IN <br />
 Hours of speech: 1.33 <br />
 
-## Command
+## Train Command
 ```
 python train.py --enco-modules 4 --enco-res --forg-modules 4 --forg-res --train-manifest data/train_sorted_EN_US.csv --val-manifest data/dev_sorted.csv --cuda --rnn-type gru --hidden-layers 3 --momentum 0.94 --opt-level O1 --loss-scale 1.0 --hidden-size 1024 --epochs 100 --lr 0.0001 --batch-size 24 --gpu-rank 4 --checkpoint --save-folder /media/data_dump/hemant/rachit/invarient_Weights/ --update-rule 4
+```
+
+## Test Command
+```
+python test.py --test-manifest=/media/data_dump/hemant/janvijay/testing_test_py/Robust_ASR/data/csvs/dev_sorted.csv --gpu=0 --model-path=/media/data_dump/hemant/hemant/grid_asr/save/experiment_1/exp_0.0001_0.0001/ --f --d --cuda --gpu 0 --batch-size 24 --save-output /home/hemant/
 ```
 
 ## Tensorboard Logging

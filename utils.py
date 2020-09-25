@@ -3,6 +3,7 @@ import torch.distributed as dist
 
 from model import DeepSpeech
 
+import os
 
 def reduce_tensor(tensor, world_size, reduce_op_max=False):
     rt = tensor.clone()
@@ -32,10 +33,10 @@ def check_loss(loss, loss_value):
 
 
 def load_model_components(device, model_path, forget, discriminator, ckpt_id, use_half):
-    encoder_model = torch.load(os.path.join(model_path, 'encoder_{}.pth'.format(ckpt_id)))
-    forget_model = torch.load(os.path.join(model_path, 'forget_net_{}.pth'.format(ckpt_id))) if forget else None
-    disc_model = torch.load(os.path.join(model_path, 'discrimator_{}.pth'.format(ckpt_id))) if discriminator else None
-    asr_model = torch.load(os.path.join(model_path, 'predictor_{}.pth'.format(ckpt_id)))
+    encoder_model = torch.load(os.path.join(model_path, 'encoder_{}.pth'.format(ckpt_id)),map_location="cpu")
+    forget_model = torch.load(os.path.join(model_path, 'forget_net_{}.pth'.format(ckpt_id)),map_location="cpu" )if forget else None
+    disc_model = torch.load(os.path.join(model_path, 'discrimator_{}.pth'.format(ckpt_id)),map_location="cpu" ) if discriminator else None
+    asr_model = torch.load(os.path.join(model_path, 'predictor_{}.pth'.format(ckpt_id)),map_location="cpu")
     model_components = [encoder_model, forget_model, disc_model, asr_model]
     for i in range(len(model_components)):
         if model_components[i] is None:
