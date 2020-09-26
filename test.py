@@ -47,9 +47,10 @@ def forward_call(model_components, inputs, inputs_sizes):
     if model_components[1] is not None: # forget net is present
         m = model_components[1](inputs, inputs_sizes)
         z = z * m
+    else: m = None
     disc_out = model_components[2](z) if model_components[2] is not None else None # discrmininator is present or not
     asr_out, asr_out_sizes = model_components[3](z, updated_lengths)
-    return (asr_out, asr_out_sizes), disc_out, a, z, updated_lengths
+    return (asr_out, asr_out_sizes), disc_out, a, z, updated_lengthsi, m
 
 
 def evaluate(test_loader, device, model_components, target_decoder, save_output=None, verbose=False, half=False):
@@ -57,6 +58,7 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
     accent = list(accent_dict.values())
     dict_z = []
     dict_z_ = []
+    dict_m = []
     with torch.no_grad():
         total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
         conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
@@ -73,11 +75,12 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
             inputs = inputs.to(device)
             
             # Forward pass
-            (asr_out, asr_out_sizes), disc_out, z, z_, updated_lengths = forward_call(model_components, inputs, input_sizes.type(torch.LongTensor).to(device))
+            (asr_out, asr_out_sizes), disc_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes.type(torch.LongTensor).to(device))
             
             #saving z and z_
             dict_z.append([z,accents,updated_lengths]) 
-            dict_z_.append([z_,accents,updated_lengths]) 
+            dict_z_.append([z_,accents,updated_lengths])
+            if m is not None: dict_m.append(m)
             # Predictor metric
             split_targets = []
             offset = 0
@@ -130,6 +133,7 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
     #saving z and z_
     torch.save(dict_z,f"{args.save_output}/z.pth") 
     torch.save(dict_z_,f"{args.save_output}/z_.pth")
+    torch.save(dict_m,f"{args.save_output}/m.pth")
 
 labels = ['_',"'",'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ']
 
