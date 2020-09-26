@@ -50,7 +50,7 @@ def forward_call(model_components, inputs, inputs_sizes):
     else: m = None
     disc_out = model_components[2](z) if model_components[2] is not None else None # discrmininator is present or not
     asr_out, asr_out_sizes = model_components[3](z, updated_lengths)
-    return (asr_out, asr_out_sizes), disc_out, a, z, updated_lengthsi, m
+    return (asr_out, asr_out_sizes), disc_out, a, z, updated_lengths, m
 
 
 def evaluate(test_loader, device, model_components, target_decoder, save_output=None, verbose=False, half=False):
