@@ -16,14 +16,14 @@ parser.add_argument('--test-manifest', metavar='DIR',
 parser.add_argument('--batch-size', default=20, type=int, help='Batch size for testing')
 parser.add_argument('--num-workers', default=32, type=int, help='Number of workers used in dataloading')
 # parser.add_argument('--verbose', action="store_true", help="print out decoded output and error of each sample")
-parser.add_argument('--save-output', default="test", help="Saves output of model from test to this file_path")
+parser.add_argument('--save-output', default="save/", help="Saves output of model from test to this file_path")
 parser.add_argument('--gpu', dest='gpu', type=str, help='GPU to be used', required=True)
 parser.add_argument('--cuda', action='store_true', default=False, help='whether to use cuda or not')
 parser.add_argument('--half', action='store_true', default=False, help='whether to use half precision or not')
 # checkpoint loading args
 parser.add_argument('--model-path', dest='model_path', type=str, help='Path to "model" directory, where weights of component of models are saved', required=True)
-parser.add_argument('--f', dest='forget', action='store_true', required=True, help='Whether to include forget module or not')
-parser.add_argument('--d', dest='discriminate', action='store_true', required=True, help='Whether to include discriminator module or not')
+parser.add_argument('--f', dest='forget', action='store_true', required=False, help='Whether to include forget module or not')
+parser.add_argument('--d', dest='discriminate', action='store_true', required=False, help='Whether to include discriminator module or not')
 parser.add_argument('--ckpt-id', dest='ckpt_id', default='final', help='checkpoint id to load from model_path directory for component modules')
 # decoder args
 parser.add_argument('--decoder', dest='decoder', default='greedy', help='type of decoder to use.')

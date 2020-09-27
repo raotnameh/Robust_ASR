@@ -146,7 +146,7 @@ if __name__ == '__main__':
     writer = SummaryWriter(tbd_logs)
 
     wer_results = torch.Tensor(args.epochs)
-    best_wer = None
+    best_wer, best_cer = None, None
     d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch = 0, 0, 0, 0
     
     #Loading the labels
@@ -534,9 +534,12 @@ if __name__ == '__main__':
             for k,v in models.items():
                 torch.save(v[0], os.path.join(save_folder, f"{k}_final.pth"))
             best_wer = wer
+            
+        if best_cer > cer or best_cer is None:
+            best_cer = cer
             poor_wer_list = []
         else:
-            poor_wer_list.append(wer)
+            poor_wer_list.append(cer)
             if len(poor_wer_list) >= args.patience:
                 print("Exiting training loop...")
                 writer.close()
