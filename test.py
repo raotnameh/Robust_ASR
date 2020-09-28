@@ -50,7 +50,7 @@ def forward_call(model_components, inputs, inputs_sizes):
     else: m = None
     disc_out = model_components[2](z) if model_components[2] is not None else None # discrmininator is present or not
     asr_out, asr_out_sizes = model_components[3](z, updated_lengths)
-    return (asr_out, asr_out_sizes), disc_out, a, z, updated_lengths, m
+    return asr_out, asr_out_sizes, disc_out, a, z, updated_lengths, m
 
 
 def evaluate(test_loader, device, model_components, target_decoder, save_output=None, verbose=False, half=False):
@@ -59,6 +59,7 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
     dict_z = []
     dict_z_ = []
     dict_m = []
+    output_data=[]
     with torch.no_grad():
         total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
         conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
@@ -75,8 +76,7 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
             inputs = inputs.to(device)
             
             # Forward pass
-            (asr_out, asr_out_sizes), disc_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes.type(torch.LongTensor).to(device))
-            
+            asr_out, asr_out_sizes, disc_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes.type(torch.LongTensor).to(device))
             #saving z and z_
             dict_z.append([z,accents,updated_lengths]) 
             dict_z_.append([z_,accents,updated_lengths])
@@ -89,6 +89,9 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
                 offset += size
             decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
             target_strings = target_decoder.convert_to_strings(split_targets)
+            if save_output is not None:
+                # add output to data array, and continue
+                output_data.append((asr_out.cpu(), asr_out_sizes.cpu(), target_strings))
 
             for x in range(len(target_strings)):
                 transcript, reference = decoded_output[x][0], target_strings[x][0]
@@ -134,6 +137,9 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
     torch.save(dict_z,f"{args.save_output}/z.pth") 
     torch.save(dict_z_,f"{args.save_output}/z_.pth")
     torch.save(dict_m,f"{args.save_output}/m.pth")
+    if args.save_output:
+        torch.save(output_data, f"{args.save_output}/out.pth")
+
 
 labels = ['_',"'",'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ']
 
