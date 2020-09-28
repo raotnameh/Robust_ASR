@@ -78,9 +78,9 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
             # Forward pass
             asr_out, asr_out_sizes, disc_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes.type(torch.LongTensor).to(device))
             #saving z and z_
-            dict_z.append([z,accents,updated_lengths]) 
-            dict_z_.append([z_,accents,updated_lengths])
-            if m is not None: dict_m.append([m,accents,updated_lengths])
+            dict_z.append([z.cpu(),accents,updated_lengths]) 
+            dict_z_.append([z_.cpu(),accents,updated_lengths])
+            if m is not None: dict_m.append([m.cpu(),accents,updated_lengths])
             # Predictor metric
             split_targets = []
             offset = 0
