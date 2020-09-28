@@ -419,6 +419,7 @@ if __name__ == '__main__':
             total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
             conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
             tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
+            acc_weights = np.ones((len(accent)))*eps
             length, num = eps, eps
             #Decoder used for evaluation
             target_decoder = GreedyDecoder(labels)
@@ -467,6 +468,7 @@ if __name__ == '__main__':
                     # Discriminator metrics: fill in the confusion matrix.
                     out, predicted = torch.max(discriminator_out, 1)
                     for j in range(len(accents)):
+                        acc_weights[accents[j]] += 1
                         if accents[j] == predicted[j].item():
                             num = num + 1
                         conf_mat[accents[j], predicted[j].item()] += 1
@@ -481,6 +483,8 @@ if __name__ == '__main__':
         class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+tps)
         class_wise_f1 = 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
         macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
+        weighted_precision, weighted_recall = ((acc_weights / acc_weights.sum()) * class_wise_precision).sum(), ((acc_weights / acc_weights.sum()) * class_wise_recall).sum()
+        weighted_f1 = 2 * weighted_precision * weighted_recall / (weighted_precision + weighted_recall)
         micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
         micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
 
@@ -488,9 +492,9 @@ if __name__ == '__main__':
         writer.add_scalar('Validation/Average-WER', wer, epoch+1)
         writer.add_scalar('Validation/Average-CER', cer, epoch+1)
         writer.add_scalar('Validation/Discriminator-Accuracy', num/length *100, epoch+1)
-        writer.add_scalar('Validation/Discriminator-Precision', micro_precision, epoch+1)
-        writer.add_scalar('Validation/Discriminator-Recall', micro_recall, epoch+1)
-        writer.add_scalar('Validation/Discriminator-F1', micro_f1, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Precision', weighted_precision, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Recall', weighted_recall, epoch+1)
+        writer.add_scalar('Validation/Discriminator-F1', weighted_f1, epoch+1)
         
         print('Validation Summary Epoch: [{0}]\t'
                 'Average WER {wer:.3f}\t'
@@ -499,7 +503,7 @@ if __name__ == '__main__':
                 'Discriminator accuracy (micro) {acc: .3f}\t'
                 'Discriminator precision (micro) {pre: .3f}\t'
                 'Discriminator recall (micro) {rec: .3f}\t'
-                'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=micro_precision, rec=micro_recall, f1=micro_f1))
+                'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
 
         
         a += f"{epoch},{wer},{cer},{num/length *100},"
