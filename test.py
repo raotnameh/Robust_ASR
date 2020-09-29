@@ -134,10 +134,10 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
     print('Average WER {wer:.3f}\t'
           'Average CER {cer:.3f}\t'.format(wer=wer, cer=cer))
     #saving z and z_
-    torch.save(dict_z,f"{args.save_output}/z.pth") 
-    torch.save(dict_z_,f"{args.save_output}/z_.pth")
-    torch.save(dict_m,f"{args.save_output}/m.pth")
     if args.save_output:
+        torch.save(dict_z,f"{args.save_output}/z.pth") 
+        torch.save(dict_z_,f"{args.save_output}/z_.pth")
+        torch.save(dict_m,f"{args.save_output}/m.pth")
         torch.save(output_data, f"{args.save_output}/out.pth")
 
 
