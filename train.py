@@ -148,30 +148,102 @@ if __name__ == '__main__':
     wer_results = torch.Tensor(args.epochs)
     best_wer, best_cer = None, None
     d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch = 0, 0, 0, 0
-    
-    #Loading the labels
-    with open(args.labels_path) as label_file:
-            labels = str(''.join(json.load(label_file)))
+    poor_cer_list = []
+    eps = 0.0000000001 # epsilon value
 
-    #Creating the configuration apply to the audio
-    audio_conf = dict(sample_rate=args.sample_rate,
-                        window_size=args.window_size,
-                        window_stride=args.window_stride,
-                        window=args.window,
-                        noise_dir=args.noise_dir,
-                        noise_prob=args.noise_prob,
-                        noise_levels=(args.noise_min, args.noise_max))
-    
-    rnn_type = args.rnn_type.lower()
-    assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
+    if args.continue_from:
+        package = torch.load(args.continue_from, map_location=("cuda" if args.cuda else "cpu"))
+        models = package['models']
+        labels = models['predictor'][0].labels
+        audio_conf = models['predictor'][0].audio_conf
 
-    #Try loading the information from the last checkpoint
-    try:
-        package = torch.load(args.weights)
-        asr.load_state_dict(package['state_dict'], strict = True)
-        best_wer = package['wer_results']
-        print('using weights')
-    except:pass
+        rnn_type = args.rnn_type.lower()
+        assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
+        assert models['predictor'][0].rnn_type == supported_rnns[rnn_type], "rnnt type of checkpoint and argument must match"
+
+        if not args.train_asr: # if adversarial training.
+            assert 'discrimator' in models and 'forget_net' in models, "forget_net and discriminator not "
+
+        if not args.finetune: # If continuing training after the last epoch.
+            start_epoch = package['start_epoch']
+            best_wer = package['best_wer']
+            best_cer = package['best_cer']
+            poor_cer_list = package['poor_cer_list']
+        else:
+            for j in models.values():
+                if j[-1]:
+                    for g in j[-1].param_groups:
+                        g['lr'] = args.lr
+    else:
+        #Loading the labels
+        with open(args.labels_path) as label_file:
+                labels = str(''.join(json.load(label_file)))
+
+        #Creating the configuration apply to the audio
+        audio_conf = dict(sample_rate=args.sample_rate,
+                            window_size=args.window_size,
+                            window_stride=args.window_stride,
+                            window=args.window,
+                            noise_dir=args.noise_dir,
+                            noise_prob=args.noise_prob,
+                            noise_levels=(args.noise_min, args.noise_max))
+    
+        rnn_type = args.rnn_type.lower()
+        assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
+
+        models = {} # All the models with their loss and optimizer are saved in this dict
+
+        # Different modules used with parameters, optimizer and loss 
+
+        # ASR
+        asr = DeepSpeech(rnn_hidden_size=args.hidden_size,
+                            nb_layers=args.hidden_layers,
+                            labels=labels,
+                            rnn_type=supported_rnns[rnn_type],
+                            audio_conf=audio_conf,
+                            bidirectional=args.bidirectional)
+        asr = asr.to(device)
+        asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        criterion = CTCLoss()
+        models['predictor'] = [asr, criterion, asr_optimizer] 
+
+        # Encoder and Decoder
+        encoder = Encoder(num_modules = args.enco_modules, residual_bool = args.enco_res)
+        encoder = encoder.to(device)
+        models['encoder'] = [encoder, None, None]
+        decoder = Decoder()
+        decoder = decoder.to(device)
+        dec_loss = Decoder_loss(nn.MSELoss())
+
+        ed_optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()),
+                                        lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        models['decoder'] = [decoder, dec_loss, ed_optimizer] 
+
+        # Forget Network
+        if not args.train_asr:
+            fnet = ForgetNet(num_modules = args.forg_modules, residual_bool = args.forg_res, hard_mask_bool = True)
+            fnet = fnet.to(device)
+            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            models['forget_net'] = [fnet, None, fnet_optimizer]
+
+        # Discriminator
+        if not args.train_asr:
+            discriminator = DiscimnateNet(classes=len(accent),num_modules=args.disc_modules,residual_bool=args.disc_res)
+            discriminator = discriminator.to(device)
+            discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
+            disc_loss_weights = torch.zeros(len(accent)) + eps
+            for accent_type_f in accent_counts:
+                if isinstance(accent_counts[accent_type_f], dict):
+                    for accent_type_in_f in accent_counts[accent_type_f]:
+                        if accent_type_in_f in accent_dict:
+                            disc_loss_weights[accent_dict[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
+            disc_loss_weights = torch.sum(disc_loss_weights) / disc_loss_weights     
+            dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
+            models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer] 
+        
+        # Printing the models
+        print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
 
     
     #Creating the dataset
@@ -198,61 +270,6 @@ if __name__ == '__main__':
         print("Shuffling batches for the following epochs")
         train_sampler.shuffle(start_epoch)
 
-    models = {}# All the models with their loss and optimizer are saved in this dict
-
-    #Different modules used with parameters, optimizer and, loss 
-    #asr
-    asr = DeepSpeech(rnn_hidden_size=args.hidden_size,
-                        nb_layers=args.hidden_layers,
-                        labels=labels,
-                        rnn_type=supported_rnns[rnn_type],
-                        audio_conf=audio_conf,
-                        bidirectional=args.bidirectional)
-    asr = asr.to(device)
-    asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-    criterion = CTCLoss()
-    models['predictor'] = [asr, criterion, asr_optimizer] 
-
-    # Encoder and Decoder
-    encoder = Encoder(num_modules = args.enco_modules, residual_bool = args.enco_res)
-    encoder = encoder.to(device)
-    models['encoder'] = [encoder, None, None]
-    decoder = Decoder()
-    decoder = decoder.to(device)
-    dec_loss = Decoder_loss(nn.MSELoss())
-
-    ed_optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()),
-                                     lr=args.lr,weight_decay=1e-4,amsgrad=True)
-    models['decoder'] = [decoder, dec_loss, ed_optimizer] 
-
-    eps = 0.0000000001 # epsilon value
-
-    # Forget_net
-    if not args.train_asr:
-        fnet = ForgetNet(num_modules = args.forg_modules, residual_bool = args.forg_res, hard_mask_bool = True)
-        fnet = fnet.to(device)
-        fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        models['forget_net'] = [fnet, None, fnet_optimizer]
-
-    # Discriminator
-    if not args.train_asr:
-        discriminator = DiscimnateNet(classes=len(accent),num_modules=args.disc_modules,residual_bool=args.disc_res)
-        discriminator = discriminator.to(device)
-        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
-        disc_loss_weights = torch.zeros(len(accent)) + eps
-        for accent_type_f in accent_counts:
-            if isinstance(accent_counts[accent_type_f], dict):
-                for accent_type_in_f in accent_counts[accent_type_f]:
-                    if accent_type_in_f in accent_dict:
-                        disc_loss_weights[accent_dict[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
-        disc_loss_weights = torch.sum(disc_loss_weights) / disc_loss_weights     
-        dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
-        models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer] 
-    
-    # Printing the models
-    print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
-
     # Printing the parameters of all the different modules 
     [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
     accent_list = sorted(accent, key=lambda x:accent[x])
@@ -277,8 +294,6 @@ if __name__ == '__main__':
     alpha = args.mw_alpha
     beta = args.mw_beta
     gamma = args.mw_gamma
-
-    poor_wer_list = []
 
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
@@ -520,12 +535,7 @@ if __name__ == '__main__':
             f.write(a)
 
         d_avg_loss, p_avg_loss, p_d_avg_loss = 0, 0, 0
-        
-        if args.checkpoint:
-            for k,v in models.items():
-                torch.save(v[0], os.path.join(save_folder, f"{k}_{epoch+1}.pth"))
 
-        
         # anneal lr
         for j in models.values():
             if j[-1]:
@@ -533,21 +543,29 @@ if __name__ == '__main__':
                     g['lr'] = g['lr'] / args.learning_anneal
         print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
 
-        if best_wer is None or best_wer > wer:
-            print("Updating the final model!")
-            for k,v in models.items():
-                torch.save(v[0], os.path.join(save_folder, f"{k}_final.pth"))
-            best_wer = wer
-            
+        # Exiting criteria
+        terminate_train = False
         if best_cer > cer or best_cer is None:
             best_cer = cer
-            poor_wer_list = []
+            poor_cer_list = []
         else:
-            poor_wer_list.append(cer)
-            if len(poor_wer_list) >= args.patience:
+            poor_cer_list.append(cer)
+            if len(poor_cer_list) >= args.patience:
                 print("Exiting training loop...")
-                writer.close()
-                exit()
+                terminate_train = True
+
+        if best_wer is None or best_wer > wer:
+            best_wer = wer
+            print("Updating the final model!")
+            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list}
+            torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+            
+        if args.checkpoint:
+            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list}
+            torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
+
+        if terminate_train:
+            break
 
         if not args.no_shuffle:
             print("Shuffling batches...")
