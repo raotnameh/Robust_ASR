@@ -33,10 +33,12 @@ def check_loss(loss, loss_value):
 
 
 def load_model_components(device, model_path, forget, discriminator, ckpt_id, use_half):
-    encoder_model = torch.load(os.path.join(model_path, 'encoder_{}.pth'.format(ckpt_id)),map_location="cpu")
-    forget_model = torch.load(os.path.join(model_path, 'forget_net_{}.pth'.format(ckpt_id)),map_location="cpu" )if forget else None
-    disc_model = torch.load(os.path.join(model_path, 'discrimator_{}.pth'.format(ckpt_id)),map_location="cpu" ) if discriminator else None
-    asr_model = torch.load(os.path.join(model_path, 'predictor_{}.pth'.format(ckpt_id)),map_location="cpu")
+    package = torch.load(os.path.join(model_path, 'ckpt_{}.pth'.format(ckpt_id)), map_location="cpu")
+    models = package['models']
+    encoder_model, asr_model = models['encoder'][0], models['predictor'][0]
+    forget_model = None if 'forget_net' not in models else models['forget_net'][0]
+    disc_model = None if 'discrimator' not in models else models['discrimator'][0]
+
     model_components = [encoder_model, forget_model, disc_model, asr_model]
     for i in range(len(model_components)):
         if model_components[i] is None:
