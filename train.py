@@ -162,7 +162,7 @@ if __name__ == '__main__':
         assert models['predictor'][0].rnn_type == supported_rnns[rnn_type], "rnnt type of checkpoint and argument must match"
 
         if not args.train_asr: # if adversarial training.
-            assert 'discrimator' in models and 'forget_net' in models, "forget_net and discriminator not "
+            assert 'discrimator' in models and 'forget_net' in models, "forget_net and discriminator not found in checkpoint loaded"
 
         if not args.finetune: # If continuing training after the last epoch.
             start_epoch = package['start_epoch']
@@ -174,6 +174,34 @@ if __name__ == '__main__':
                 if j[-1]:
                     for g in j[-1].param_groups:
                         g['lr'] = args.lr
+
+        asr, criterion, asr_optimizer = models['predictor']
+        encoder, _, _ = models['encoder']
+        decoder, dec_loss, ed_optimizer = models['decoder']
+
+        if not args.train_asr:
+            fnet, _, fnet_optimizer = models['forget_net']
+        else:
+            if 'forget_net' in models:
+                del models['forget_net']
+
+        # Discriminator
+        if not args.train_asr:
+            accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
+            disc_loss_weights = torch.zeros(len(accent)) + eps
+            for accent_type_f in accent_counts:
+                if isinstance(accent_counts[accent_type_f], dict):
+                    for accent_type_in_f in accent_counts[accent_type_f]:
+                        if accent_type_in_f in accent_dict:
+                            disc_loss_weights[accent_dict[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
+            disc_loss_weights = torch.sum(disc_loss_weights) / disc_loss_weights     
+            dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
+            discriminator, _, discriminator_optimizer = models['discrimator']
+            models['discrimator'][1] = dis_loss
+        else:
+            if 'discrimator' in models:
+                del models['discrimator']
+
     else:
         #Loading the labels
         with open(args.labels_path) as label_file:
@@ -243,7 +271,7 @@ if __name__ == '__main__':
             models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer] 
         
         # Printing the models
-        print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
+    print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
 
     
     #Creating the dataset
@@ -545,7 +573,7 @@ if __name__ == '__main__':
 
         # Exiting criteria
         terminate_train = False
-        if best_cer > cer or best_cer is None:
+        if best_cer is None or best_cer > cer:
             best_cer = cer
             poor_cer_list = []
         else:
