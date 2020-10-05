@@ -141,8 +141,6 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
         torch.save(output_data, f"{args.save_output}/out.pth")
 
 
-labels = ['_',"'",'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ']
-
 if __name__ == '__main__':
     args = parser.parse_args()
     torch.set_grad_enabled(False)
@@ -151,14 +149,14 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     model_components = load_model_components(device, args.model_path, args.forget, args.discriminate, args.ckpt_id, args.half)
     
-    #Creating the configuration apply to the audio
-    audio_conf = dict(sample_rate=args.sample_rate,
-                        window_size=args.window_size,
-                        window_stride=args.window_stride,
-                        window=args.window,
-                        noise_dir=args.noise_dir,
-                        noise_prob=args.noise_prob,
-                        noise_levels=(args.noise_min, args.noise_max))
+    if args.forget:
+        assert model_components[1] is not None, "forget net not found in checkpoint"
+    if args.discriminate:
+        assert model_components[1] is not None, "discriminate net not found in checkpoint"
+
+    #Loading the configuration apply to the audio and labels of asr
+    audio_conf = model_components[3].audio_conf
+    labels = model_components[3].labels
 
     if args.decoder == "beam":
         from decoder import BeamCTCDecoder
@@ -191,9 +189,3 @@ if __name__ == '__main__':
                                      save_output=False,
                                      verbose=False,
                                      half=args.half)
-
-    # print('Test Summary \t'
-    #       'Average WER {wer:.3f}\t'
-    #       'Average CER {cer:.3f}\t'.format(wer=wer, cer=cer))
-    # if args.save_output is not None:
-    #     torch.save(output_data, args.save_output)

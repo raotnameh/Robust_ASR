@@ -47,7 +47,7 @@ def load_model_components(device, model_path, forget, discriminator, ckpt_id, us
         model_components[i] = model_components[i].to(device)
         if use_half:
             model_components[i] = model_components[i].half()
-    return model_components # e, f, d, a
+    return model_components # e, f, d, asr
 
 def load_model(device, model_path, use_half):
     model = DeepSpeech.load_model(model_path)
