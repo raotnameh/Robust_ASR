@@ -150,9 +150,10 @@ if __name__ == '__main__':
     d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch = 0, 0, 0, 0
     poor_cer_list = []
     eps = 0.0000000001 # epsilon value
-
+    start_iter = 0
+    
     if args.continue_from:
-        package = torch.load(args.continue_from, map_location=("cuda" if args.cuda else "cpu"))
+        package = torch.load(args.continue_from, map_location=(f"cuda:{args.gpu_rank}" if args.cuda else "cpu"))
         models = package['models']
         labels = models['predictor'][0].labels
         audio_conf = models['predictor'][0].audio_conf
@@ -166,6 +167,7 @@ if __name__ == '__main__':
 
         if not args.finetune: # If continuing training after the last epoch.
             start_epoch = package['start_epoch']
+            start_iter = package['start_iter']
             best_wer = package['best_wer']
             best_cer = package['best_cer']
             poor_cer_list = package['poor_cer_list']
@@ -291,6 +293,10 @@ if __name__ == '__main__':
                                    num_workers=args.num_workers, batch_sampler=train_sampler)
     disc_train_loader = AudioDataLoader(disc_train_dataset,
                                    num_workers=args.num_workers, batch_sampler=disc_train_sampler)
+    
+    disc_train_sampler.shuffle(start_epoch)
+    disc_ = iter(disc_train_loader)
+
     test_loader = AudioDataLoader(test_dataset, batch_size=int(1.5*args.batch_size),
                                   num_workers=args.num_workers)
 
@@ -328,7 +334,7 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
 
-        for i, (data) in enumerate(train_loader):
+        for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
                 break
             if args.dummy and i%2 == 1: break
@@ -365,21 +371,23 @@ if __name__ == '__main__':
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
 
-            disc_train_sampler.shuffle(start_epoch)
             if args.num_epochs > epoch: prob -= diff
             else: 
                 prob = [i*0 for i in prob]
                 prob[-1] = 1
             update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
             d_avg_loss_iter = eps
-            for k, (data_) in enumerate(disc_train_loader): #updating the discriminator only  
-                if k == update_rule: break 
+            
+            for k in range(int(update_rule)): #updating the discriminator only  
                 
                 d_counter += 1
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
 
                 # Data loading
-                inputs_, targets_, input_percentages_, target_sizes_, accents_ = data_
+                try: inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
+                except:
+                    disc_train_sampler.shuffle(start_epoch)
+                    disc_ = iter(disc_train_loader)
                 input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
                 inputs_ = inputs_.to(device)
                 accents_ = torch.tensor(accents_).to(device)
@@ -450,7 +458,10 @@ if __name__ == '__main__':
             writer.add_scalar('Train/Dummy-Discriminator-Per-Iteration-Loss', p_d_loss, len(train_sampler)*epoch+i+1) # Dummy Disctrimintaor loss in the current iteration.
             writer.add_scalar('Train/Dummy-Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
             print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
-            
+             
+            if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
+                package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': start_iter}
+                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i}.pth"))
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
@@ -585,11 +596,11 @@ if __name__ == '__main__':
         if best_wer is None or best_wer > wer:
             best_wer = wer
             print("Updating the final model!")
-            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list}
+            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': start_iter}
             torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
             
         if args.checkpoint:
-            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list}
+            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': start_iter}
             torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
         if terminate_train:
