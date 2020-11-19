@@ -147,15 +147,7 @@ if __name__ == '__main__':
 
     wer_results = torch.Tensor(args.epochs)
     best_wer, best_cer = None, None
-    d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch = 0, 0, 0, 0
-    poor_cer_list = []
-    eps = 0.0000000001 # epsilon value
-    start_iter = 0
-    
-    if args.continue_from:
-        package = torch.load(args.continue_from, map_location=(f"cuda:{args.gpu_rank}" if args.cuda else "cpu"))
-        models = package['models']
-        labels = models['predictor'][0].labels
+    d_avg_loss
         audio_conf = models['predictor'][0].audio_conf
 
         rnn_type = args.rnn_type.lower()
@@ -167,12 +159,12 @@ if __name__ == '__main__':
 
         if not args.finetune: # If continuing training after the last epoch.
             start_epoch = package['start_epoch'] - 1  # Index start at 0 for training
+            start_iter = package['start_iter']
             if start_iter is None:
                 start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
                 start_iter = 0
             else:
                 start_iter += 1
-            start_iter = package['start_iter']
             print(start_iter)
             best_wer = package['best_wer']
             best_cer = package['best_cer']
@@ -297,6 +289,7 @@ if __name__ == '__main__':
 
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler)
+    
     disc_train_loader = AudioDataLoader(disc_train_dataset,
                                    num_workers=args.num_workers, batch_sampler=disc_train_sampler)
     
