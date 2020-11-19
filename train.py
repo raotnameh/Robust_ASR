@@ -166,8 +166,14 @@ if __name__ == '__main__':
             assert 'discrimator' in models and 'forget_net' in models, "forget_net and discriminator not found in checkpoint loaded"
 
         if not args.finetune: # If continuing training after the last epoch.
-            start_epoch = package['start_epoch']
+            start_epoch = package['start_epoch'] - 1  # Index start at 0 for training
+            if start_iter is None:
+                start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
+                start_iter = 0
+            else:
+                start_iter += 1
             start_iter = package['start_iter']
+            print(start_iter)
             best_wer = package['best_wer']
             best_cer = package['best_cer']
             poor_cer_list = package['poor_cer_list']
@@ -320,6 +326,8 @@ if __name__ == '__main__':
     update_rule = args.update_rule
     prob = np.geomspace(1, update_rule*100000, num=update_rule)[::-1]
     prob /= np.sum(prob)
+    prob_ = [0 for i in prob]
+    prob_[-1] = 1
     print(f"Initial Probability to udpate to the discrimiantor: {prob}")
     diff = np.array([ prob[i] - prob[-1-i] for i in range(len(prob))])
     diff /= len(train_sampler)*args.num_epochs
@@ -372,9 +380,7 @@ if __name__ == '__main__':
                 continue
 
             if args.num_epochs > epoch: prob -= diff
-            else: 
-                prob = [i*0 for i in prob]
-                prob[-1] = 1
+            else: prob = prob_ 
             update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
             d_avg_loss_iter = eps
             
@@ -388,6 +394,8 @@ if __name__ == '__main__':
                 except:
                     disc_train_sampler.shuffle(start_epoch)
                     disc_ = iter(disc_train_loader)
+                    inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
+
                 input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
                 inputs_ = inputs_.to(device)
                 accents_ = torch.tensor(accents_).to(device)
@@ -411,10 +419,8 @@ if __name__ == '__main__':
             writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_avg_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
             writer.add_scalar('Train/Discriminator-Per-Iteration-Loss', d_avg_loss_iter/(update_rule+eps), len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
 
-            # Random labels for adversarial learning of the predictor network               
-            [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
-            p_counter += 1
-            # Shuffling the elements of alist s.t. elements are not same at the same indices
+            # Random labels for adversarial learning of the predictor network                
+            # Shuffling the elements of a list s.t. elements are not same at the same indices
             dummy = [] 
             for acce in accents:
                 while True:
@@ -424,6 +430,9 @@ if __name__ == '__main__':
                         break
             accents = torch.tensor(dummy).to(device)
 
+            [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+            p_counter += 1
+            
             # Forward pass
             z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
             decoder_out = decoder(z) # Decoder network
@@ -460,8 +469,8 @@ if __name__ == '__main__':
             print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
              
             if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
-                package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': start_iter}
-                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i}.pth"))
+                package = {'models': models, 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i}
+                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
@@ -469,6 +478,7 @@ if __name__ == '__main__':
               'Time taken (s): {1}\t'
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
 
+        start_ter = 0
         with torch.no_grad():
             total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
             conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
@@ -596,11 +606,11 @@ if __name__ == '__main__':
         if best_wer is None or best_wer > wer:
             best_wer = wer
             print("Updating the final model!")
-            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': start_iter}
+            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
             torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
             
         if args.checkpoint:
-            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': start_iter}
+            package = {'models': models, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
             torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
         if terminate_train:

@@ -33,7 +33,7 @@ def check_loss(loss, loss_value):
 
 
 def load_model_components(device, model_path, forget, discriminator, ckpt_id, use_half):
-    package = torch.load(os.path.join(model_path, 'ckpt_{}.pth'.format(ckpt_id)), map_location="cpu")
+    package = torch.load(model_path, map_location="cpu")
     models = package['models']
     encoder_model, asr_model = models['encoder'][0], models['predictor'][0]
     forget_model = None if 'forget_net' not in models else models['forget_net'][0]
