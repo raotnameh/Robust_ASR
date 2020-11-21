@@ -282,16 +282,23 @@ class ForgetNet(nn.Module):
         for i in range(num_modules):
             if i==0:
                 stride_1, stride_2, input_channels = (2, 2), (2, 1), 1
+                self.modules_list.append(
+                nn.ModuleDict({
+                'conv_1': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
+                'batch_norm_1': nn.BatchNorm2d(32),
+                'conv_2': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
+                'batch_norm_2': nn.BatchNorm2d(32),
+                })
+                )
             else:
-                stride_1, stride_2, input_channels = (1, 1), (1, 1), 32
-            self.modules_list.append(
-                                    nn.ModuleDict({
-                                    'conv_1': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
-                                    'batch_norm_1': nn.BatchNorm2d(32),
-                                    'conv_2': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
-                                    'batch_norm_2': nn.BatchNorm2d(32),
-                                    })
-                                    )
+                stride_1, input_channels = 1, 32
+                self.modules_list.append(
+                nn.ModuleDict({
+                'conv_1': nn.Conv1d(input_channels, 32, kernel_size=41, stride=stride_1, padding=20),
+                'batch_norm_1': nn.BatchNorm1d(32),
+                'batch_norm_2': nn.BatchNorm1d(32),
+                })
+                )
         self.modules_list = nn.ModuleList(self.modules_list)
         self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
         self.sigmoid = nn.Sigmoid()
@@ -311,13 +318,35 @@ class ForgetNet(nn.Module):
         # x = self.hard_tanh(self.batch_norm_1(self.conv_1(input_x)))
         # x = self.sigmoid(self.batch_norm_2(self.conv_2(x)))
         for i, module_dict in enumerate(self.modules_list):
-            x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](input_x)))
-            x = module_dict['conv_2'](x)
+
+            if i == 0:
+                x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](input_x)))
+                x = module_dict['conv_2'](x)
+            else:
+                x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](x)))
+
             if i != 0 and self.residual: # Residual connection
                 x = x + input_x
-            non_lin = self.hard_tanh if (len(self.modules_list) != i+1) else self.sigmoid
-            input_x = x = non_lin(module_dict['batch_norm_2'](x))
+
+            if (len(self.modules_list) != i+1):
+                if i==0:
+                    non_lin = self.hard_tanh
+                    input_x = x = non_lin(module_dict['batch_norm_2'](x))
+                    x_s = x.shape
+                    x = torch.reshape(x, (x_s[0], x_s[1], x_s[2]*x_s[3]))
+                    input_x_s = input_x.shape
+                    input_x = torch.reshape(input_x, (input_x_s[0], input_x_s[1], input_x_s[2]*input_x_s[3]))
+                else:
+                    non_lin = self.hard_tanh
+                    input_x = x = non_lin(module_dict['batch_norm_2'](x))
+
+            else:
+                non_lin = self.sigmoid
+                input_x = x = non_lin(module_dict['batch_norm_2'](x))
+
+
         if self.apply_hard_mask:
+            x = x.unsqueeze(2)
             x = self.hard_mask(x, widths)
         return x
 
@@ -375,16 +404,23 @@ class Encoder(nn.Module):
         for i in range(num_modules):
             if i==0:
                 stride_1, stride_2, input_channels = (2, 2), (2, 1), 1
+                self.modules_list.append(
+                nn.ModuleDict({
+                'conv_1': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
+                'batch_norm_1': nn.BatchNorm2d(32),
+                'conv_2': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
+                'batch_norm_2': nn.BatchNorm2d(32),
+                })
+                )
             else:
-                stride_1, stride_2, input_channels = (1, 1), (1, 1), 32
-            self.modules_list.append(
-                                    nn.ModuleDict({
-                                    'conv_1': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
-                                    'batch_norm_1': nn.BatchNorm2d(32),
-                                    'conv_2': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
-                                    'batch_norm_2': nn.BatchNorm2d(32),
-                                    })
-                                    )
+                stride_1, input_channels = 1, 32
+                self.modules_list.append(
+                nn.ModuleDict({
+                'conv_1': nn.Conv1d(input_channels, 32, kernel_size=41, stride=stride_1, padding=20),
+                'batch_norm_1': nn.BatchNorm1d(32),
+                'batch_norm_2': nn.BatchNorm1d(32),
+                })
+                )
         self.modules_list = nn.ModuleList(self.modules_list)
         self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
         self.residual = residual_bool
@@ -393,11 +429,28 @@ class Encoder(nn.Module):
     def forward(self, input_x, lengths):
 
         for i, module_dict in enumerate(self.modules_list):
-            x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](input_x)))
-            x = module_dict['conv_2'](x)
+
+            if i==0:
+                x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](input_x)))
+                x = module_dict['conv_2'](x)
+            else:
+                x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](x)))
+
             if i != 0 and self.residual: # Residual connection
                 x = x + input_x
-            input_x = x = self.hard_tanh(module_dict['batch_norm_2'](x))
+
+            if i==0:
+                input_x = x = self.hard_tanh(module_dict['batch_norm_2'](x))
+                x_s = x.shape
+                x = torch.reshape(x, (x_s[0], x_s[1], x_s[2]*x_s[3]))
+                input_x_s = input_x.shape
+                input_x = torch.reshape(input_x, (input_x_s[0], input_x_s[1], input_x_s[2]*input_x_s[3]))
+            else:
+                input_x = x = self.hard_tanh(module_dict['batch_norm_2'](x))
+
+            #input_x = x = self.hard_tanh(x)
+            #x_s = x.shape
+        x = x.unsqueeze(2)
         return x, self.get_seq_lens(lengths)
 
 
@@ -472,11 +525,11 @@ if __name__ == '__main__':
     WIDTHS[0] = MAX_W
 
     print("INPUT", X.shape)
-    forget_net = ForgetNet()
+    forget_net = ForgetNet(8, 1, 1)
     M = forget_net(X, WIDTHS)
-    print("MASK OUT", M.shape)
+    print("FORGET OUT", M.shape)
 
-    encoder_net = Encoder()
+    encoder_net = Encoder(8, 1)
     Z = encoder_net(X)
     print("ENCODER OUT", Z.shape)
 
@@ -485,7 +538,7 @@ if __name__ == '__main__':
     print("DECODER OUT", X_bar.shape)
 
     Z_bar = Z * M
-    discriminator = DiscimnateNet()
+    discriminator = DiscimnateNet(2, 1, 1)
     Prob = discriminator(Z_bar)
     print("DISCRIMINATOR OUT", Prob.shape)
 
