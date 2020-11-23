@@ -474,6 +474,7 @@ if __name__ == '__main__':
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
+        start_iter = 0
         print('Training Summary Epoch: [{0}]\t'
               'Time taken (s): {1}\t'
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
