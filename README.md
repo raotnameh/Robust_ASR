@@ -24,6 +24,9 @@ pip install -r requirements.txt
 
 ## Training
 
+### Dataset
+For dataset used for training and testing please refer to the section 4.1 in the [paper](https://arxiv.org/pdf/2011.12979.pdf).
+
 ### Custom Dataset
 To create a custom dataset you must create a .csv file containing the locations of the data. This has to be in the format of:
 ```
