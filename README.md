@@ -31,7 +31,8 @@ To create a custom dataset you must create a .csv file containing the locations 
 /path/to/audio2.wav,/path/to/text2.txt,IN\n
 ...
 ```
-> The first path is to the audio file, the second path is to a text file containing the transcript, and the third is the accent label. 
+
+The first path is to the audio file, the second path is to a text file containing the transcript, and the third is the accent label. 
 
 ### Merging multiple manifest files
 
@@ -40,9 +41,9 @@ To create bigger manifest files (to train/test on multiple datasets at once) we 
 cat file_1.csv file_2.cav > combined.csv
 ```
 
-> After this run data/Sortagrad.py on the resulting .csv file.
+After this run data/Sortagrad.py on the resulting .csv file.
 
-> sample csv files are present in the data/csvs folder for reference.
+Sample csv files are present in the data/csvs folder for reference.
 
 
 ### Training a Model
