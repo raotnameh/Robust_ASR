@@ -82,11 +82,11 @@ A beam search decoder can optionally be used with the installation of the `ctcde
 SOON
 
 ## Experimental results: <br/>
-|%          |dev EN US    |Libriclean|Libriother|TestIN|TestNZ|Discriminatoraccuracy|
-|-----------|-----------|----------|----------|------|------|---------------------|
-|Baseline   |40.16      |63.90     |77.13     |69.15 |39.62 |83%                  |
-|Adversarial forgetting|34.66      |58.62     |73.43     |63.01 |33.50 |72%                  |
-|Abs. improvement|**-5.50**      |**-5.28**     |**-3.70**     |**-6.13** |**-6.02** |**-11%**                 |
+|%                      |dev EN US  |Libri clean|Libri other|TestIN    |TestNZ    |Discriminator accuracy|
+|-----------------------|-----------|-----------|-----------|----------|----------|----------------------|
+|Baseline               |40.16      |63.90      |77.13      |69.15     |39.62     |83%                   |
+|Adversarial forgetting |34.66      |58.62      |73.43      |63.01     |33.50     |72%                   |
+|Abs. improvement       |**-5.50**  |**-5.28**  |**-3.70**  |**-6.13** |**-6.02** |**-11%**              |
 
 
 ### Citation
