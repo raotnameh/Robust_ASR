@@ -8,9 +8,11 @@ def get_length(input_video):
     return [input_video,float(result.stdout)]
 
 files = glob.glob("t.csv")
-print(files)
+save_file = 't_sorted.csv'
+num_workers = 48
 max_duration = 15.0
 min_duration = 0.5
+print(files)
 
 def csv_(dummy):
     dummy = [i for i in tqdm(dummy) if i[-1] <= max_duration and i[-1] >= min_duration]
@@ -18,7 +20,7 @@ def csv_(dummy):
     a = ''
     for i in tqdm(dummy):
         a+=i[0]
-    with open('t_sorted.csv', "w") as f:
+    with open(save_file, "w") as f:
         f.write(a)
 
 
@@ -29,7 +31,7 @@ for file in files:
         csv = f.readlines()
 
     def run(get_length, wav):
-            with ProcessPoolExecutor(max_workers=48) as executor:
+            with ProcessPoolExecutor(max_workers=num_workers) as executor:
                 results = list(tqdm((executor.map(get_length, wav)), total=len(wav)))
             return results
     print("starting the processes")
