@@ -104,7 +104,7 @@ SOON
 }<br/>
 
 
-###### For any queries open and issue or [contact](hemantya@iiitd.ac.in).
+###### For any queries, the preferred method is to open an issue. For any personal queries please [EMAIL](hemantya@iiitd.ac.in) me.
 #### Acknowledgements
 Thanks to [Sean](https://github.com/SeanNaren) to open source his DS2 code!
 
