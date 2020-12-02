@@ -105,7 +105,7 @@ SOON
 
 
 For any queries open and issue or [contact](hemantya@iiitd.ac.in).
-###### Acknowledgements
+#### Acknowledgements
 Thanks to [Sean](https://github.com/SeanNaren) to open source his DS2 code!
 
 
