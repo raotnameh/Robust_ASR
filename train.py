@@ -13,7 +13,7 @@ from collections import OrderedDict
 import pandas as pd
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler
-from data.data_loader import accent as accent_dict
+from data.data_loader import get_accents
 from decoder import GreedyDecoder
 from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
 
@@ -119,6 +119,7 @@ def to_np(x):
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    accent_dict = get_accents(args.train_manifest)
     accent = list(accent_dict.values())
 
     # Set seeds for determinism
@@ -151,7 +152,8 @@ if __name__ == '__main__':
     poor_cer_list = []
     eps = 0.0000000001 # epsilon value
     start_iter = 0
-    
+
+   
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda:{args.gpu_rank}" if args.cuda else "cpu"))
         models = package['models']

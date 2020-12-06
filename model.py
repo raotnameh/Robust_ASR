@@ -161,7 +161,7 @@ class DeepSpeech(nn.Module):
         self.inference_softmax = InferenceBatchSoftmax()
 
     def forward(self, x, lengths):
-        # lengths = lengths.cpu().int()
+        lengths = lengths.cpu().int()
         # print(lengths)
         # output_lengths = self.get_seq_lens(lengths)
         # print(output_lengths)
@@ -461,31 +461,32 @@ class Model(nn.Module):
 
 if __name__ == '__main__':
 
-    MAX_W = 100 # MAX_W is variable with audio length; 0.2 second, 20 millisecond // 41 (minimum) input to forget
+    MAX_W = 130 # MAX_W is variable with audio length; 0.2 second, 20 millisecond // 41 (minimum) input to forget
     MIN_W = 41
-    H = 81 # H is variable with sampling rate; // 161 - 16khz
-    B_SZ = 32
+    H = 161 # H is variable with sampling rate; // 161 - 16khz
+    B_SZ = 24
 
-    # Creating random input and widths
+   # Creating random input and widths
     X = torch.rand((B_SZ, 1, H, MAX_W))
     WIDTHS = torch.LongTensor(B_SZ).random_(MIN_W, MAX_W)
     WIDTHS[0] = MAX_W
 
     print("INPUT", X.shape)
-    forget_net = ForgetNet()
+    forget_net = ForgetNet(8, 1, 1)
     M = forget_net(X, WIDTHS)
-    print("MASK OUT", M.shape)
+    print("FORGET OUT", M.shape)
 
-    encoder_net = Encoder()
-    Z = encoder_net(X)
-    print("ENCODER OUT", Z.shape)
+    encoder_net = Encoder(8, 1)
+    Z = encoder_net(X, WIDTHS)
+    print("ENCODER OUT", Z[0].shape)
+    print("ENCODER OUT [1]", Z[1].shape)
 
     decoder_net = Decoder()
-    X_bar = decoder_net(Z)
+    X_bar = decoder_net(Z[0])
     print("DECODER OUT", X_bar.shape)
 
-    Z_bar = Z * M
-    discriminator = DiscimnateNet()
+    Z_bar = Z[0] * M
+    discriminator = DiscimnateNet(2, 1, 1)
     Prob = discriminator(Z_bar)
     print("DISCRIMINATOR OUT", Prob.shape)
 
