@@ -140,6 +140,7 @@ class DeepSpeech(nn.Module):
         rnn_input_size = int(math.floor(rnn_input_size + 2 * 10 - 21) / 2 + 1)
         #print(rnn_input_size)
         rnn_input_size *= 32
+        #print(rnn_input_size)
 
         rnns = []
         rnn = BatchRNN(input_size=rnn_input_size, hidden_size=rnn_hidden_size, rnn_type=rnn_type,
@@ -161,7 +162,7 @@ class DeepSpeech(nn.Module):
         self.inference_softmax = InferenceBatchSoftmax()
 
     def forward(self, x, lengths):
-        # lengths = lengths.cpu().int()
+        lengths = lengths.cpu().int()
         # print(lengths)
         # output_lengths = self.get_seq_lens(lengths)
         # print(output_lengths)
@@ -346,7 +347,9 @@ class ForgetNet(nn.Module):
 
 
         if self.apply_hard_mask:
-            x = x.unsqueeze(2)
+            #x = x.unsqueeze(2)
+            sizes = x.shape
+            x = x.view(sizes[0], sizes[1], 41, -1)
             x = self.hard_mask(x, widths)
         return x
 
@@ -450,7 +453,8 @@ class Encoder(nn.Module):
 
             #input_x = x = self.hard_tanh(x)
             #x_s = x.shape
-        x = x.unsqueeze(2)
+        sizes = x.shape
+        x = x.view(sizes[0], sizes[1], 41, -1)
         return x, self.get_seq_lens(lengths)
 
 
@@ -514,10 +518,10 @@ class Model(nn.Module):
 
 if __name__ == '__main__':
 
-    MAX_W = 100 # MAX_W is variable with audio length; 0.2 second, 20 millisecond // 41 (minimum) input to forget
+    MAX_W = 130 # MAX_W is variable with audio length; 0.2 second, 20 millisecond // 41 (minimum) input to forget
     MIN_W = 41
-    H = 81 # H is variable with sampling rate; // 161 - 16khz
-    B_SZ = 32
+    H = 161 # H is variable with sampling rate; // 161 - 16khz
+    B_SZ = 24
 
     # Creating random input and widths
     X = torch.rand((B_SZ, 1, H, MAX_W))
@@ -530,14 +534,15 @@ if __name__ == '__main__':
     print("FORGET OUT", M.shape)
 
     encoder_net = Encoder(8, 1)
-    Z = encoder_net(X)
-    print("ENCODER OUT", Z.shape)
+    Z = encoder_net(X, WIDTHS)
+    print("ENCODER OUT", Z[0].shape)
+    print("ENCODER OUT", Z[1].shape)
 
     decoder_net = Decoder()
-    X_bar = decoder_net(Z)
+    X_bar = decoder_net(Z[0])
     print("DECODER OUT", X_bar.shape)
 
-    Z_bar = Z * M
+    Z_bar = Z[0] * M
     discriminator = DiscimnateNet(2, 1, 1)
     Prob = discriminator(Z_bar)
     print("DISCRIMINATOR OUT", Prob.shape)

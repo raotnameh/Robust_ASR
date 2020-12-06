@@ -15,12 +15,14 @@ import math
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from .spec_augment import spec_augment
+import pandas as pd
 
 windows = {'hamming': scipy.signal.hamming, 'hann': scipy.signal.hann, 'blackman': scipy.signal.blackman,
            'bartlett': scipy.signal.bartlett}
 #accent = {'EN':0, 'US':1, 'CA':2, 'AU':3, 'WE':4, 'IR':5, 'SC':6}
-accent = {'US':0, 'ENGLAND':1, 'CANADA':2, 'AUSTRALIA':3, 'INDIAN':4}
-#accent = {'EN':0, 'US':1}
+#accent = {'US':0, 'ENGLAND':1, 'CANADA':2, 'AUSTRALIA':3, 'INDIAN':4}
+accent = {'EN':0, 'US':1}
+
 def load_audio(path):
     sample_rate, sound = read(path)
     sound = sound.astype('float32') / 32767  # normalize audio
@@ -141,7 +143,7 @@ class SpectrogramParser(AudioParser):
 
 
 class SpectrogramDataset(Dataset, SpectrogramParser):
-    def __init__(self, audio_conf, manifest_filepath, labels, normalize=False, speed_volume_perturb=False, spec_augment=False):
+    def __init__(self, audio_conf, manifest_filepath, labels,normalize=False, speed_volume_perturb=False, spec_augment=False):
         """
         Dataset that loads tensors via a csv containing file paths to audio files and transcripts separated by
         a comma. Each new line is a different sample. Example below:
@@ -160,7 +162,14 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
             ids = f.readlines()
         ids = [x.strip().split(',') for x in ids]
         self.ids = ids
+        # if (accent==None):
+        #     accentList = list(pd.read_csv(manifest_filepath,header=None)[2].unique())
+        #     accentList.sort()
+        #     self.accent = {val : idx  for idx, val in enumerate(accentList)}
+        # else:   
+        #     self.accent =accent
         self.size = len(ids)
+        # print(self.accent)
         self.labels_map = dict([(labels[i], i) for i in range(len(labels))])
         super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment)
 

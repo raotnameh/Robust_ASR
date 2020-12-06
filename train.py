@@ -147,7 +147,15 @@ if __name__ == '__main__':
 
     wer_results = torch.Tensor(args.epochs)
     best_wer, best_cer = None, None
-    d_avg_loss
+    d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch = 0, 0, 0, 0
+    poor_cer_list = []
+    eps = 0.0000000001 # epsilon value
+    start_iter = 0
+
+    if args.continue_from:
+        package = torch.load(args.continue_from, map_location=(f"cuda:{args.gpu_rank}" if args.cuda else "cpu"))
+        models = package['models']
+        labels = models['predictor'][0].labels
         audio_conf = models['predictor'][0].audio_conf
 
         rnn_type = args.rnn_type.lower()
@@ -159,12 +167,12 @@ if __name__ == '__main__':
 
         if not args.finetune: # If continuing training after the last epoch.
             start_epoch = package['start_epoch'] - 1  # Index start at 0 for training
-            start_iter = package['start_iter']
             if start_iter is None:
                 start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
                 start_iter = 0
             else:
                 start_iter += 1
+            start_iter = package['start_iter']
             print(start_iter)
             best_wer = package['best_wer']
             best_cer = package['best_cer']
@@ -289,7 +297,6 @@ if __name__ == '__main__':
 
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler)
-    
     disc_train_loader = AudioDataLoader(disc_train_dataset,
                                    num_workers=args.num_workers, batch_sampler=disc_train_sampler)
     
@@ -345,6 +352,9 @@ if __name__ == '__main__':
             input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
             inputs = inputs.to(device)
 
+            if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
+                package = {'models': models, 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i}
+                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
             if args.train_asr: # Only trainig the ASR component
                 
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
@@ -393,6 +403,8 @@ if __name__ == '__main__':
                 inputs_ = inputs_.to(device)
                 accents_ = torch.tensor(accents_).to(device)
                 # Forward pass
+
+                
                 z,updated_lengths = encoder(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Encoder network
                 m = fnet(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Forget network
                 z_ = z * m # Forget Operation
@@ -427,9 +439,11 @@ if __name__ == '__main__':
             p_counter += 1
             
             # Forward pass
+            #print("input size", inputs.shape)
             z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
             decoder_out = decoder(z) # Decoder network
             m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+            #print("forget output", m.shape)
             z_ = z * m # Forget Operation
             discriminator_out = discriminator(z_) # Discriminator network
             asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
@@ -461,9 +475,6 @@ if __name__ == '__main__':
             writer.add_scalar('Train/Dummy-Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
             print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
              
-            if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
-                package = {'models': models, 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i}
-                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
