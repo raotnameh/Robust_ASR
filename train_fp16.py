@@ -26,7 +26,7 @@ parser.add_argument('--train-manifest', metavar='DIR',
 parser.add_argument('--val-manifest', metavar='DIR',
                     help='path to validation manifest csv', default='data/val_manifest.csv')
 parser.add_argument('--sample-rate', default=16000, type=int, help='Sample rate')
-parser.add_argument('--batch-size', default=2, type=int, help='Batch size for training')
+arser.add_argument('--batch-size', default=2, type=int, help='Batch size for training')
 parser.add_argument('--num-workers', default=4, type=int, help='Number of workers used in data-loading')
 parser.add_argument('--labels-path', default='labels.json', help='Contains all characters for transcription')
 parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')
@@ -362,7 +362,7 @@ if __name__ == '__main__':
             inputs = inputs.to(device)
 
             if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
-                package = {'models': models, 'amp': amp, 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i}
+                package = {'models': models, 'amp': amp.state_dict(), 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
             
             if args.train_asr: # Only trainig the ASR component
@@ -372,7 +372,7 @@ if __name__ == '__main__':
                 # Forward pass
                 z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
                 decoder_out = decoder(z) # Decoder network
-                asr_out, asr_out_sizes = asr(z, updated_lengths) # Predictor network
+                asr_out, asr_out_sizes = asr(z, updated_lengths.cpu()) # Predictor network
                 # Loss                
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
@@ -463,7 +463,7 @@ if __name__ == '__main__':
             m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
             z_ = z * m # Forget Operation
             discriminator_out = discriminator(z_) # Discriminator network
-            asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
+            asr_out, asr_out_sizes = asr(z_, updated_lengths.cpu()) # Predictor network
             # Loss
             discriminator_loss = dis_loss(discriminator_out, accents) * beta
             p_d_loss = discriminator_loss.item()
@@ -642,11 +642,11 @@ if __name__ == '__main__':
         if best_wer is None or best_wer > wer:
             best_wer = wer
             print("Updating the final model!")
-            package = {'models': models, 'amp': amp, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
+            package = {'models': models, 'amp': amp.state_dict(), 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
             torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
             
         if args.checkpoint:
-            package = {'models': models, 'amp': amp, 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
+            package = {'models': models, 'amp': amp.state_dict(), 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
             torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
         if terminate_train:
