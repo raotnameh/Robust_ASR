@@ -1,4 +1,3 @@
-from apex import amp
 import argparse
 import json
 import os
