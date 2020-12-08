@@ -10,6 +10,11 @@ cd warp-ctc; mkdir build; cd build; cmake ..; make
 export CUDA_HOME="/usr/local/cuda"
 cd ../pytorch_binding && python setup.py install
 ```
+Install Nvidia apex
+```
+git clone --recursive https://github.com/NVIDIA/apex.git
+cd apex && python setup.py install --cuda_ext --cpp_ext
+```
 
 If you want decoding to support beam search with an optional language model, install ctcdecode:
 ```
