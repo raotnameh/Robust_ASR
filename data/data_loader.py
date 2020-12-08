@@ -19,6 +19,7 @@ import pandas as pd
 
 windows = {'hamming': scipy.signal.hamming, 'hann': scipy.signal.hann, 'blackman': scipy.signal.blackman,
            'bartlett': scipy.signal.bartlett}
+accent = None
 #accent = {'EN':0, 'US':1, 'CA':2, 'AU':3, 'WE':4, 'IR':5, 'SC':6}
 #accent = {'US':0, 'ENGLAND':1, 'CANADA':2, 'AUSTRALIA':3, 'INDIAN':4}
 # accent = {'EN':0, 'US':1}
@@ -35,9 +36,12 @@ def load_audio(path):
     return sound
 
 def get_accents(path):
-    accentList = list(pd.read_csv(path,header=None)[2].unique())
-    accentList.sort()
-    accent = {val : idx  for idx, val in enumerate(accentList)}
+    global accent
+    if accent == None:
+        print("updating accents")
+        accentList = list(pd.read_csv(path,header=None)[2].unique())
+        accentList.sort()
+        accent = {val : idx  for idx, val in enumerate(accentList)}
     return accent
 
 class AudioParser(object):
@@ -166,11 +170,6 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
             ids = f.readlines()
         ids = [x.strip().split(',') for x in ids]
         self.ids = ids
-        if (accent==None):
-            self.accent = get_accents(manifest_filepath)
-        else:   
-            self.accent =accent
-        print(self.accent)
         self.size = len(ids)
         self.labels_map = dict([(labels[i], i) for i in range(len(labels))])
         super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment)
@@ -184,7 +183,7 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         #     print("using accents")
         #     accentData = accents[sample[2]]
         #     return spect,transcript,accentData
-        return spect, transcript,self.accent[sample[2]]
+        return spect, transcript
 
     def parse_transcript(self, transcript_path):
         with open(transcript_path, 'r', encoding='utf8') as transcript_file:

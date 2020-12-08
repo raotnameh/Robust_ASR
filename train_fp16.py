@@ -14,7 +14,7 @@ from collections import OrderedDict
 import pandas as pd
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler
-from data.data_loader import accent as accent_dict
+from data.data_loader import get_accents
 from decoder import GreedyDecoder
 from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
 
@@ -120,6 +120,7 @@ def to_np(x):
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    accent_dict = get_accents(args.train_manifest) 
     accent = list(accent_dict.values())
 
     # Set seeds for determinism
@@ -479,7 +480,7 @@ if __name__ == '__main__':
                 scaler.scale(loss).backward()
                 scaler.step(e_optimizer)
                 scaler.step(d_optimizer)
-                scaler.step(asr_optimizer()
+                scaler.step(asr_optimizer)
                 scaler.step(fnet_optimizer)
             else: 
                 print(error)
