@@ -14,7 +14,7 @@ cd ../pytorch_binding && python setup.py install
 If you want decoding to support beam search with an optional language model, install ctcdecode:
 ```
 git clone --recursive https://github.com/parlance/ctcdecode.git
-cd ctcdecode && pip install .
+cd ctcdecode && python setup.py install --cuda_ext --cpp_ext
 ```
 
 Finally clone this repo and run this within the repo:
