@@ -283,14 +283,6 @@ if __name__ == '__main__':
         # Printing the models
     print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
     
-    # Fp16 training
-    for k,v in  models.items():
-        models[k][0], models[k][-1] = amp.initialize(models[k][0], models[k][-1],
-                                                        opt_level=args.opt_level,
-                                                        keep_batchnorm_fp32=args.keep_batchnorm_fp32,
-                                                        loss_scale=args.loss_scale)
-    if amp_state is not None:
-        amp.load_state_dict(amp_state)
     #Creating the dataset
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
@@ -346,6 +338,7 @@ if __name__ == '__main__':
     beta = args.mw_beta
     gamma = args.mw_gamma
 
+    scaler = torch.cuda.amp.GradScaler()
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
@@ -362,38 +355,37 @@ if __name__ == '__main__':
             inputs = inputs.to(device)
 
             if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
-                package = {'models': models, 'amp': amp.state_dict(), 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i}
+                package = {'models': models , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
             
             if args.train_asr: # Only trainig the ASR component
                 
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
                 p_counter += 1
-                # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                decoder_out = decoder(z) # Decoder network
-                asr_out, asr_out_sizes = asr(z, updated_lengths.cpu()) # Predictor network
-                # Loss                
-                asr_out = asr_out.transpose(0, 1)  # TxNxH
-                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
-                asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
-                loss = asr_loss + decoder_loss
+                with torch.cuda.amp.autocast():
+                    # Forward pass
+                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                    decoder_out = decoder(z) # Decoder network
+                    asr_out, asr_out_sizes = asr(z, updated_lengths.cpu()) # Predictor network
+                    # Loss                
+                    asr_out = asr_out.transpose(0, 1)  # TxNxH
+                    asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+                    asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
+                    decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
+                    loss = asr_loss + decoder_loss
                 p_loss = loss.item()
 
                 valid_loss, error = check_loss(loss, p_loss)
                 if valid_loss:
-                    with amp.scale_loss(loss, [e_optimizer, d_optimizer, asr_optimizer]) as scaled_loss:
-                        scaled_loss.backward() 
-                    #loss.backward()
-                    e_optimizer.step()
-                    d_optimizer.step()
-                    asr_optimizer.step()
+                    scaler.scale(loss).backward()
+                    scaler.step(e_optimizer)
+                    scaler.step(d_optimizer)
+                    scaler.step(asr_optimizer)
                 else: 
                     print(error)
                     print("Skipping grad update")
                     p_loss = 0.0
-                
+                scaler.update() 
                 p_avg_loss += p_loss
                 # Logging to tensorboard and train.log.
                 writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
@@ -642,11 +634,11 @@ if __name__ == '__main__':
         if best_wer is None or best_wer > wer:
             best_wer = wer
             print("Updating the final model!")
-            package = {'models': models, 'amp': amp.state_dict(), 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
             torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
             
         if args.checkpoint:
-            package = {'models': models, 'amp': amp.state_dict(), 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
             torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
         if terminate_train:
