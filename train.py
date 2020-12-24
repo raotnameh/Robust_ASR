@@ -240,10 +240,10 @@ if __name__ == '__main__':
                             bidirectional=args.bidirectional)'''
         asr = Jasper(labels = labels, 
                      num_sub_block = 2, 
-                     num_blocks = 2,
+                     num_blocks = 1,
                      vocab_size = 1024, 
                      audio_conf = audio_conf,
-                     out_chs = [32, 64])
+                     out_chs = [32])
         asr = asr.to(device)
         asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         criterion = CTCLoss()
