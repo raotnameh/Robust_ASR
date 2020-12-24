@@ -15,7 +15,7 @@ import pandas as pd
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler
 from data.data_loader import accent as accent_dict
 from decoder import GreedyDecoder
-from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
+from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet, Jasper
 
 from utils import reduce_tensor, check_loss, Decoder_loss
 
@@ -232,12 +232,18 @@ if __name__ == '__main__':
         # Different modules used with parameters, optimizer and loss 
 
         # ASR
-        asr = DeepSpeech(rnn_hidden_size=args.hidden_size,
+        '''asr = DeepSpeech(rnn_hidden_size=args.hidden_size,
                             nb_layers=args.hidden_layers,
                             labels=labels,
                             rnn_type=supported_rnns[rnn_type],
                             audio_conf=audio_conf,
-                            bidirectional=args.bidirectional)
+                            bidirectional=args.bidirectional)'''
+        asr = Jasper(labels = labels, 
+                     num_sub_block = 2, 
+                     num_blocks = 2,
+                     vocab_size = 1024, 
+                     audio_conf = audio_conf,
+                     out_chs = [32, 64])
         asr = asr.to(device)
         asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         criterion = CTCLoss()

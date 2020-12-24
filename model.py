@@ -484,6 +484,252 @@ class Decoder(nn.Module):
         x = self.hard_tanh(self.trans_conv_2(x))
         return x
 
+##################################################
+##################################################
+
+class Block(nn.Module):
+
+    def __init__(self, kernel = None, stride = 1, dilation = 1, out_ch = None, inp_ch = None,
+                dropout_ = None, num_sub_blocks = None):
+        super(Block, self).__init__()
+
+        self.kernel = kernel
+        self.stride = stride
+        self.dilation = dilation
+        self.out_ch = out_ch
+        self.dropout_ = dropout_
+        self.num_sub_blocks = num_sub_blocks
+
+        # sub-blocks
+        assert(num_sub_blocks - 1 >= 1)
+        self.modules_list = []
+        for i in range(num_sub_blocks - 1):
+
+            if i==0:
+                self.modules_list.append(
+                        nn.ModuleDict({
+                            'conv': nn.Conv1d(inp_ch, out_ch, kernel_size=kernel, stride=stride, padding = 5),
+                            'batch_norm': nn.BatchNorm1d(out_ch),
+                            'relu': nn.ReLU(0.2),
+                            'dropout': nn.Dropout(dropout_),
+                        }))
+            else:
+                self.modules_list.append(
+                        nn.ModuleDict({
+                            'conv': nn.Conv1d(out_ch, out_ch, kernel_size=kernel, stride=stride, padding = 5),
+                            'batch_norm': nn.BatchNorm1d(out_ch),
+                            'relu': nn.ReLU(0.2),
+                            'dropout': nn.Dropout(dropout_),
+                        }))
+        self.modules_list = nn.ModuleList(self.modules_list)
+        # final sub blocks
+        self.convf = nn.Conv1d(out_ch, out_ch, kernel_size=kernel, stride=stride, dilation= dilation, padding = 5)
+        self.batchnormf = nn.BatchNorm1d(out_ch)
+        self.reluf = nn.ReLU(0.2)
+        self.dropoutf = nn.Dropout(dropout_)
+
+        # 1x1 norm
+        self.conv11 = nn.Conv1d(inp_ch, out_ch, kernel_size=1)
+        self.batchnorm11 = nn.BatchNorm1d(out_ch)
+
+    def forward(self, x):
+
+        inputx = x
+
+        for i, module_dict in enumerate(self.modules_list):
+
+            x = module_dict['dropout'](module_dict['relu'](module_dict['batch_norm'](module_dict['conv'](x))))
+
+        x1 = self.batchnorm11(self.conv11(inputx)) 
+        x = self.dropoutf(self.reluf(self.batchnormf(self.convf(x)) + x1))
+
+        return x
+
+class PrePostBlock(nn.Module):
+
+    def __init__(self, kernel = None, stride = 1, dilation = 1, out_ch = None, inp_ch = None,
+                dropout_ = None):
+        super(PrePostBlock, self).__init__()
+
+        self.kernel = kernel
+        self.stride = stride
+        self.dilation = dilation
+        self.out_ch = out_ch
+        self.dropout_ = dropout_
+
+        self.conv = nn.Conv1d(inp_ch, out_ch, kernel_size=kernel, stride=stride, padding = 5)
+        self.batchnorm = nn.BatchNorm1d(out_ch)
+        self.relu = nn.ReLU(0.2)
+        self.dropout = nn.Dropout(dropout_)
+
+    def forward(self, x):
+
+        x = self.dropout(self.relu(self.batchnorm(self.conv(x))))
+
+        return x
+
+class Jasper(nn.Module):
+    def __init__(self, labels="abc", num_sub_block=None, num_blocks=None, vocab_size = None, audio_conf=None,
+                 out_chs = None):
+        super(Jasper, self).__init__()
+
+        # model metadata needed for serialization/deserialization
+        if audio_conf is None:
+            audio_conf = {}
+        self.version = '0.0.1'
+        self.audio_conf = audio_conf or {}
+        self.labels = labels
+        self.vocab_size = vocab_size
+        self.out_chs = out_chs
+        self.num_blocks = num_blocks
+        self.num_sub_block = num_sub_block
+
+        sample_rate = self.audio_conf.get("sample_rate", 16000)
+        window_size = self.audio_conf.get("window_size", 0.02)
+        num_classes = len(self.labels)
+
+        # Based on above convolutions and spectrogram size using conv formula (W - F + 2P)/ S+1
+        input_size = int(math.floor((sample_rate * window_size) / 2) + 1)
+        input_size = int(math.floor(input_size + 2 * 20 - 41) / 2 + 1)
+        input_size = int(math.floor(input_size + 2 * 10 - 21) / 2 + 1)
+        input_size *= 32
+
+        # Pre-processing block
+        self.convPre =  PrePostBlock(kernel = 11, stride = 2, out_ch = 256, inp_ch = input_size, dropout_ = 0.2)
+
+        # Mid blocks
+        assert(num_blocks >= 1)
+        self.modules_list = []
+        prev_ch = 256
+        for i in range(num_blocks):
+
+            if i==0:
+                self.modules_list.append(
+                        nn.ModuleDict({
+                            'block': Block(kernel = 11, stride = 1, dilation = 1, out_ch = out_chs[i], inp_ch = prev_ch,
+                                           dropout_ = 0.2, num_sub_blocks = num_sub_block)
+                        }))
+            else:
+                self.modules_list.append(
+                        nn.ModuleDict({
+                            'block': Block(kernel = 11, stride = 1, dilation = 1, out_ch = out_chs[i], inp_ch = prev_ch,
+                                           dropout_ = 0.2, num_sub_blocks = num_sub_block)
+                        }))
+            prev_ch = out_chs[i]
+
+        self.modules_list = nn.ModuleList(self.modules_list)
+
+        # Post blocks
+        self.convPos1 =  PrePostBlock(kernel = 11, out_ch = 896, inp_ch = prev_ch, dropout_ = 0.4)
+
+        self.convPos2 =  PrePostBlock(kernel = 1, out_ch = 1024, inp_ch = 896, dropout_ = 0.4)
+
+        self.convPos3 =  nn.Conv1d(1024, vocab_size, kernel_size=1)
+       
+
+    def forward(self, x, lengths):
+        lengths = lengths.cpu().int()
+        output_lengths = lengths
+
+        sizes = x.size()
+        x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])  # Collapse feature dimension
+        #print(x.shape)
+        #x = x.transpose(1, 2).transpose(0, 1).contiguous()  # TxNxH
+
+        # Forward pass
+        # Pre block
+        x = self.convPre(x)
+        # Mid blocks
+        for i, module_dict in enumerate(self.modules_list):
+
+            x = module_dict['block'](x)
+
+        # Post block
+        x = self.convPos1(x)
+        x = self.convPos2(x)
+        x = self.convPos3(x) 
+
+        return x, output_lengths
+
+    def get_seq_lens(self, input_length):
+        """
+        Given a 1D Tensor or Variable containing integer sequence lengths, return a 1D tensor or variable
+        containing the size sequences that will be output by the network.
+        :param input_length: 1D Tensor
+        :return: 1D Tensor scaled by model
+        """
+        seq_len = input_length
+        for m in self.conv.modules():
+            if type(m) == nn.modules.conv.Conv2d:
+                seq_len = ((seq_len + 2 * m.padding[1] - m.dilation[1] * (m.kernel_size[1] - 1) - 1) // m.stride[1] + 1)
+        return seq_len.int()
+
+    '''@classmethod
+    def load_model(cls, path):
+        package = torch.load(path, map_location=lambda storage, loc: storage)
+        model = cls(rnn_hidden_size=package['hidden_size'],
+                    nb_layers=package['hidden_layers'],
+                    labels=package['labels'],
+                    audio_conf=package['audio_conf'],
+                    rnn_type=supported_rnns[package['rnn_type']],
+                    bidirectional=package.get('bidirectional', True))
+        model.load_state_dict(package['state_dict'])
+        for x in model.rnns:
+            x.flatten_parameters()
+        return model
+
+    @classmethod
+    def load_model_package(cls, package):
+        model = cls(rnn_hidden_size=package['hidden_size'],
+                    nb_layers=package['hidden_layers'],
+                    labels=package['labels'],
+                    audio_conf=package['audio_conf'],
+                    rnn_type=supported_rnns[package['rnn_type']],
+                    bidirectional=package.get('bidirectional', True))
+        model.load_state_dict(package['state_dict'])
+        return model'''
+
+    @staticmethod
+    def serialize(model, optimizer=None, epoch=None, iteration=None, loss_results=None,
+                  cer_results=None, wer_results=None, avg_loss=None, meta=None):
+        package = {
+            'hidden_size': model.hidden_size,
+            'hidden_layers': model.hidden_layers,
+            'rnn_type': supported_rnns_inv.get(model.rnn_type, model.rnn_type.__name__.lower()),
+            'audio_conf': model.audio_conf,
+            'labels': model.labels,
+            'state_dict': model.state_dict(),
+            'bidirectional': model.bidirectional,
+        }
+        if optimizer is not None:
+            package['optim_dict'] = optimizer.state_dict()
+        if avg_loss is not None:
+            package['avg_loss'] = avg_loss
+        if epoch is not None:
+            package['epoch'] = epoch + 1  # increment for readability
+        if iteration is not None:
+            package['iteration'] = iteration
+        if loss_results is not None:
+            package['loss_results'] = loss_results
+            package['cer_results'] = cer_results
+            package['wer_results'] = wer_results
+        if meta is not None:
+            package['meta'] = meta
+        return package
+
+    @staticmethod
+    def get_param_size(model):
+        params = 0
+        for p in model.parameters():
+            tmp = 1
+            for x in p.size():
+                tmp *= x
+            params += tmp
+        return params
+
+###############################################
+###############################################
+
 class Model(nn.Module):
     def __init__(self):
         self.forget_net = ForgetNet()
@@ -546,6 +792,11 @@ if __name__ == '__main__':
     discriminator = DiscimnateNet(2, 1, 1)
     Prob = discriminator(Z_bar)
     print("DISCRIMINATOR OUT", Prob.shape)
+
+    asr = Jasper(num_sub_block=2, num_blocks=2, vocab_size = 1000, out_chs = [512, 1024])
+    output = asr(Z_bar, Z[1])
+    print("ASR OUT", output[0].shape)
+    print("ASR OUT", output[1].shape)
 
 
 # if __name__ == '__main__':
