@@ -484,8 +484,8 @@ class Decoder(nn.Module):
         x = self.hard_tanh(self.trans_conv_2(x))
         return x
 
-##################################################
-##################################################
+####################### Jasper ###########################
+
 
 class Block(nn.Module):
 
@@ -664,15 +664,15 @@ class Jasper(nn.Module):
                 seq_len = ((seq_len + 2 * m.padding[1] - m.dilation[1] * (m.kernel_size[1] - 1) - 1) // m.stride[1] + 1)
         return seq_len.int()
 
-    '''@classmethod
+    @classmethod
     def load_model(cls, path):
         package = torch.load(path, map_location=lambda storage, loc: storage)
-        model = cls(rnn_hidden_size=package['hidden_size'],
-                    nb_layers=package['hidden_layers'],
+        model = cls(num_sub_block=package['num_sub_block'],
+                    num_blocks=package['num_blocks'],
                     labels=package['labels'],
                     audio_conf=package['audio_conf'],
-                    rnn_type=supported_rnns[package['rnn_type']],
-                    bidirectional=package.get('bidirectional', True))
+                    out_chs=package['out_chs'],
+                    vocab_size=package['vocab_size'])
         model.load_state_dict(package['state_dict'])
         for x in model.rnns:
             x.flatten_parameters()
@@ -680,26 +680,26 @@ class Jasper(nn.Module):
 
     @classmethod
     def load_model_package(cls, package):
-        model = cls(rnn_hidden_size=package['hidden_size'],
-                    nb_layers=package['hidden_layers'],
+        model = cls(num_sub_block=package['num_sub_block'],
+                    num_blocks=package['num_blocks'],
                     labels=package['labels'],
                     audio_conf=package['audio_conf'],
-                    rnn_type=supported_rnns[package['rnn_type']],
-                    bidirectional=package.get('bidirectional', True))
+                    out_chs=package['out_chs'],
+                    vocab_size=package['vocab_size'])
         model.load_state_dict(package['state_dict'])
-        return model'''
+        return model
 
     @staticmethod
     def serialize(model, optimizer=None, epoch=None, iteration=None, loss_results=None,
                   cer_results=None, wer_results=None, avg_loss=None, meta=None):
         package = {
-            'hidden_size': model.hidden_size,
-            'hidden_layers': model.hidden_layers,
-            'rnn_type': supported_rnns_inv.get(model.rnn_type, model.rnn_type.__name__.lower()),
+            'num_sub_block': model.hidden_size,
+            'num_blocks': model.hidden_layers,
+            'vocab_size': model.vocab_size,
             'audio_conf': model.audio_conf,
             'labels': model.labels,
-            'state_dict': model.state_dict(),
-            'bidirectional': model.bidirectional,
+            'state_dict': model.state_dict()
+            'out_chs':model.out_chs,
         }
         if optimizer is not None:
             package['optim_dict'] = optimizer.state_dict()
@@ -726,9 +726,6 @@ class Jasper(nn.Module):
                 tmp *= x
             params += tmp
         return params
-
-###############################################
-###############################################
 
 class Model(nn.Module):
     def __init__(self):

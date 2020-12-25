@@ -109,7 +109,17 @@ parser.add_argument('--mw-beta', type= float, default= 1,
 parser.add_argument('--mw-gamma', type= float, default= 1,
                     help= 'weight for regularisation')             
 
-parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
+parser.add_argument('--exp-name', dest='exp_name', required=True,
+                    help='Location to save experiment\'s chekpoints and log-files.')
+
+parser.add_argument('--num-sub-blocks', type= int, default= 1,
+                    help= 'number of asr sub-blocks R')
+
+parser.add_argument('--num-blocks', type= int, default= 2,
+                    help= 'number of asr blocks B') 
+
+parser.add_argument('--out-ch', type= str, default= '32,32',
+                    help= 'output channels for every asr block') 
 
 
 def to_np(x):
@@ -152,15 +162,19 @@ if __name__ == '__main__':
     eps = 0.0000000001 # epsilon value
     start_iter = 0
 
+    # List of output channels
+
+    out_chs = args.out_ch.split(",")
+
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda:{args.gpu_rank}" if args.cuda else "cpu"))
         models = package['models']
         labels = models['predictor'][0].labels
         audio_conf = models['predictor'][0].audio_conf
 
-        rnn_type = args.rnn_type.lower()
-        assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
-        assert models['predictor'][0].rnn_type == supported_rnns[rnn_type], "rnnt type of checkpoint and argument must match"
+        #rnn_type = args.rnn_type.lower()
+        #assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
+        #assert models['predictor'][0].rnn_type == supported_rnns[rnn_type], "rnnt type of checkpoint and argument must match"
 
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' in models and 'forget_net' in models, "forget_net and discriminator not found in checkpoint loaded"
@@ -239,11 +253,11 @@ if __name__ == '__main__':
                             audio_conf=audio_conf,
                             bidirectional=args.bidirectional)'''
         asr = Jasper(labels = labels, 
-                     num_sub_block = 2, 
-                     num_blocks = 1,
+                     num_sub_block = args.num_sub_blocks, 
+                     num_blocks = args.num_blocks,
                      vocab_size = 1024, 
                      audio_conf = audio_conf,
-                     out_chs = [32])
+                     out_chs = out_chs)
         asr = asr.to(device)
         asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         criterion = CTCLoss()
