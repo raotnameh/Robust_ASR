@@ -79,3 +79,62 @@ class Decoder_loss():
         loss_ = self.loss(outputs, target)
 
         return loss_
+
+def validation( test_loader, decoder,,eps=0.0000000001):
+    total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
+    conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
+    tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
+    acc_weights = np.ones((len(accent)))*eps
+    length, num = eps, eps
+    #Decoder used for evaluation
+    target_decoder = decoder(labels)
+    for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
+        if args.dummy and i%2 == 1: break
+
+        # Data loading
+        inputs, targets, input_percentages, target_sizes, accents = data
+        input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+        inputs = inputs.to(device)
+        
+        # Forward pass
+        if not args.train_asr:
+            z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+            m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+            z_ = z * m # Forget Operation
+            discriminator_out = discriminator(z_) # Discriminator network
+            asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
+        else:
+            z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+            decoder_out = decoder(z) # Decoder network
+            asr_out, asr_out_sizes = asr(z, updated_lengths) # Predictor network
+
+        # Predictor metric
+        split_targets = []
+        offset = 0
+        for size in target_sizes:
+            split_targets.append(targets[offset:offset + size])
+            offset += size
+        decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
+        target_strings = target_decoder.convert_to_strings(split_targets)
+
+        for x in range(len(target_strings)):
+            transcript, reference = decoded_output[x][0], target_strings[x][0]
+            wer_inst = target_decoder.wer(transcript, reference)
+            cer_inst = target_decoder.cer(transcript, reference)
+            total_wer += wer_inst
+            total_cer += cer_inst
+            num_tokens += len(reference.split())
+            num_chars += len(reference.replace(' ', ''))
+
+        wer = float(total_wer) / num_tokens
+        cer = float(total_cer) / num_chars
+
+        if not args.train_asr:
+            # Discriminator metrics: fill in the confusion matrix.
+            out, predicted = torch.max(discriminator_out, 1)
+            for j in range(len(accents)):
+                acc_weights[accents[j]] += 1
+                if accents[j] == predicted[j].item():
+                    num = num + 1
+                conf_mat[accents[j], predicted[j].item()] += 1
+            length = length + len(accents)

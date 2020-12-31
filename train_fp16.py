@@ -111,7 +111,8 @@ parser.add_argument('--mw-gamma', type= float, default= 1,
                     help= 'weight for regularisation')             
 
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
-
+parser.add_argument('--fp16', action='store_true',
+                    help='training using fp16')
 
 def to_np(x):
     return x.cpu().numpy()
@@ -339,7 +340,7 @@ if __name__ == '__main__':
     beta = args.mw_beta
     gamma = args.mw_gamma
 
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False)
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
@@ -363,7 +364,7 @@ if __name__ == '__main__':
                 
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
                 p_counter += 1
-                with torch.cuda.amp.autocast():
+                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
                     z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
                     decoder_out = decoder(z) # Decoder network
@@ -382,11 +383,12 @@ if __name__ == '__main__':
                     scaler.step(e_optimizer)
                     scaler.step(d_optimizer)
                     scaler.step(asr_optimizer)
+                    scaler.update()
                 else: 
                     print(error)
                     print("Skipping grad update")
                     p_loss = 0.0
-                scaler.update() 
+                 
                 p_avg_loss += p_loss
                 # Logging to tensorboard and train.log.
                 writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
@@ -414,7 +416,7 @@ if __name__ == '__main__':
                 input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
                 inputs_ = inputs_.to(device)
                 accents_ = torch.tensor(accents_).to(device)
-                with torch.cuda.amp.autocast():
+                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
                     z,updated_lengths = encoder(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Encoder network
                     m = fnet(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Forget network
@@ -449,7 +451,7 @@ if __name__ == '__main__':
             [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
             p_counter += 1
             
-            with torch.cuda.amp.autocast():
+            with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
                 z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
                 decoder_out = decoder(z) # Decoder network
