@@ -5,6 +5,10 @@ from model import DeepSpeech
 
 import os
 
+import json
+import numpy as np
+from tqdm.auto import tqdm
+
 def reduce_tensor(tensor, world_size, reduce_op_max=False):
     rt = tensor.clone()
     dist.all_reduce(rt, op=dist.reduce_op.MAX if reduce_op_max is True else dist.reduce_op.SUM)  # Default to sum
@@ -80,14 +84,13 @@ class Decoder_loss():
 
         return loss_
 
-def validation( test_loader, decoder,,eps=0.0000000001):
+def validation(test_loader,GreedyDecoder , models, args,accent,device,loss_save,labels,eps=0.0000000001):
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
-    tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
     acc_weights = np.ones((len(accent)))*eps
     length, num = eps, eps
     #Decoder used for evaluation
-    target_decoder = decoder(labels)
+    target_decoder = GreedyDecoder(labels)
     for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
         if args.dummy and i%2 == 1: break
 
@@ -98,15 +101,15 @@ def validation( test_loader, decoder,,eps=0.0000000001):
         
         # Forward pass
         if not args.train_asr:
-            z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+            z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
             m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
             z_ = z * m # Forget Operation
-            discriminator_out = discriminator(z_) # Discriminator network
-            asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
+            discriminator_out = models['discrimator'][0](z_) # Discriminator network
+            asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
         else:
-            z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-            decoder_out = decoder(z) # Decoder network
-            asr_out, asr_out_sizes = asr(z, updated_lengths) # Predictor network
+            z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+            decoder_out = models['decoder'][0](z) # Decoder network
+            asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
 
         # Predictor metric
         split_targets = []
@@ -138,3 +141,24 @@ def validation( test_loader, decoder,,eps=0.0000000001):
                     num = num + 1
                 conf_mat[accents[j], predicted[j].item()] += 1
             length = length + len(accents)
+        
+        # add comment janvijay
+        tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
+        for acc_type in range(len(accent)):
+            tps[acc_type] = conf_mat[acc_type, acc_type]
+            fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
+            fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
+            tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
+        class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+tps)
+        class_wise_f1 = 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
+        macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
+        weighted_precision, weighted_recall = ((acc_weights / acc_weights.sum()) * class_wise_precision).sum(), ((acc_weights / acc_weights.sum()) * class_wise_recall).sum()
+        weighted_f1 = 2 * weighted_precision * weighted_recall / (weighted_precision + weighted_recall)
+        micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
+        micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
+
+        # TODO
+        # if state == 'test':
+        #     return wer, cer, num, length,  weighted_precision, weighted_recal, weighted_f1
+
+    return wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy

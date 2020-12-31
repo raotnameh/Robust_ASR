@@ -1,3 +1,4 @@
+#from apex import amp
 import argparse
 import json
 import os
@@ -12,13 +13,12 @@ from warpctc_pytorch import CTCLoss
 from collections import OrderedDict
 import pandas as pd
 
-import horovod.torch as hvd
-from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
+from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler
 from data.data_loader import get_accents
 from decoder import GreedyDecoder
 from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
 
-from utils import reduce_tensor, check_loss, Decoder_loss, validation
+from utils import reduce_tensor, check_loss, Decoder_loss
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--train-manifest', metavar='DIR',
@@ -111,14 +111,12 @@ parser.add_argument('--mw-gamma', type= float, default= 1,
                     help= 'weight for regularisation')             
 
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
-
+parser.add_argument('--fp16', action='store_true',
+                    help='training using fp16')
 
 def to_np(x):
     return x.cpu().numpy()
 
-
-hvd.init()
-torch.cuda.set_device(hvd.local_rank())
 
 
 if __name__ == '__main__':
@@ -126,10 +124,6 @@ if __name__ == '__main__':
     accent_dict = get_accents(args.train_manifest) 
     accent = list(accent_dict.values())
 
-    # Lr scaler for multi gpu training
-    lr_scaler = hvd.size()
-    args.lr = args.lr * lr_scaler
-    
     # Set seeds for determinism
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -138,6 +132,7 @@ if __name__ == '__main__':
 
     #Gpu setting
     device = torch.device("cuda" if args.cuda else "cpu")
+    torch.cuda.set_device(int(args.gpu_rank))
 
     #Where to save the models and training's metadata
     save_folder = os.path.join(args.exp_name, 'models')
@@ -270,6 +265,7 @@ if __name__ == '__main__':
             fnet = fnet.to(device)
             fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
+
         # Discriminator
         if not args.train_asr:
             discriminator = DiscimnateNet(classes=len(accent),num_modules=args.disc_modules,residual_bool=args.disc_res)
@@ -286,15 +282,7 @@ if __name__ == '__main__':
             dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
             models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer] 
         
-     
-    
-    # Lr scheduler
-    scheduler = []
-    for i in models.keys():
-        scheduler.append(torch.optim.lr_scheduler.StepLR(models[i][-1], step_size=1, gamma=args.learning_anneal, verbose=True))
-
-    
-    # Printing the models
+        # Printing the models
     print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
     
     #Creating the dataset
@@ -307,10 +295,8 @@ if __name__ == '__main__':
     test_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.val_manifest, labels=labels,
                                       normalize=True, speed_volume_perturb=False, spec_augment=False)
 
-    train_sampler = DistributedBucketingSampler(train_dataset, batch_size=args.batch_size,
-                                                num_replicas=hvd.size(), rank=hvd.rank())
-    disc_train_sampler = DistributedBucketingSampler(disc_train_dataset, batch_size=args.batch_size,
-                                                num_replicas=hvd.size(), rank=hvd.rank())
+    train_sampler = BucketingSampler(train_dataset, batch_size=args.batch_size)
+    disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_size)
 
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler)
@@ -354,12 +340,7 @@ if __name__ == '__main__':
     beta = args.mw_beta
     gamma = args.mw_gamma
 
-    
-    for i in models.keys():
-        hvd.broadcast_parameters(models[i][0].state_dict(), root_rank=0)
-        hvd.broadcast_optimizer_state(models[i][-1], root_rank=0)
-        models[i][-1] = hvd.DistributedOptimizer(models[i][-1], named_parameters=models[i][0].named_parameters())
-        
+    scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False)
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
@@ -383,33 +364,31 @@ if __name__ == '__main__':
                 
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
                 p_counter += 1
-                # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                decoder_out = decoder(z) # Decoder network
-                asr_out, asr_out_sizes = asr(z, updated_lengths.cpu()) # Predictor network
-                # Loss                
-                asr_out = asr_out.transpose(0, 1)  # TxNxH
-                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
-                asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
-                loss = asr_loss + decoder_loss
+                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
+                    # Forward pass
+                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                    decoder_out = decoder(z) # Decoder network
+                    asr_out, asr_out_sizes = asr(z, updated_lengths.cpu()) # Predictor network
+                    # Loss                
+                    asr_out = asr_out.transpose(0, 1)  # TxNxH
+                    asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+                    asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
+                    decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
+                    loss = asr_loss + decoder_loss
                 p_loss = loss.item()
 
                 valid_loss, error = check_loss(loss, p_loss)
                 if valid_loss:
-                    loss.backward()
-                    e_optimizer.step()
-                    d_optimizer.step()
-                    asr_optimizer.step()
-                    
+                    scaler.scale(loss).backward()
+                    scaler.step(e_optimizer)
+                    scaler.step(d_optimizer)
+                    scaler.step(asr_optimizer)
+                    scaler.update()
                 else: 
                     print(error)
                     print("Skipping grad update")
                     p_loss = 0.0
-                
-                for i_ in models.keys():
-                    models[i_][-1].synchronize()
-
+                 
                 p_avg_loss += p_loss
                 # Logging to tensorboard and train.log.
                 writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
@@ -437,7 +416,7 @@ if __name__ == '__main__':
                 input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
                 inputs_ = inputs_.to(device)
                 accents_ = torch.tensor(accents_).to(device)
-                with torch.cuda.amp.autocast():
+                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
                     z,updated_lengths = encoder(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Encoder network
                     m = fnet(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Forget network
@@ -472,7 +451,7 @@ if __name__ == '__main__':
             [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
             p_counter += 1
             
-            with torch.cuda.amp.autocast():
+            with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
                 z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
                 decoder_out = decoder(z) # Decoder network
@@ -528,77 +507,143 @@ if __name__ == '__main__':
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
 
         start_ter = 0
-        if hvd.rank() == 0:
-            with torch.no_grad():
-                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
-            
-            a += f"{epoch},{wer},{cer},{num/length *100},"
         
-            for idx, accent_type in enumerate(accent_list):
-                a += f"{class_wise_precision[idx]},"
-            for idx, accent_type in enumerate(accent_list):
-                a += f"{class_wise_recall[idx]},"
-            for idx, accent_type in enumerate(accent_list):
-                a += f"{class_wise_f1[idx]},"
-            a += f"{d_avg_loss},{p_avg_loss},{alpha},{beta},{gamma}\n"
+        with torch.no_grad():
+            total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
+            tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
+            conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
+            acc_weights = np.ones((len(accent)))*eps
+            length, num = eps, eps
+            #Decoder used for evaluation
+            target_decoder = GreedyDecoder(labels)
+            for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
+                if args.dummy and i%2 == 1: break
 
-            with open(loss_save, "w") as f:
-                f.write(a)
-            # Logging to tensorboard.
-            writer.add_scalar('Validation/Average-WER', wer, epoch+1)
-            writer.add_scalar('Validation/Average-CER', cer, epoch+1)
-            writer.add_scalar('Validation/Discriminator-Accuracy', num/length *100, epoch+1)
-            writer.add_scalar('Validation/Discriminator-Precision', weighted_precision, epoch+1)
-            writer.add_scalar('Validation/Discriminator-Recall', weighted_recall, epoch+1)
-            writer.add_scalar('Validation/Discriminator-F1', weighted_f1, epoch+1)
-            
-            print('Validation Summary Epoch: [{0}]\t'
-                    'Average WER {wer:.3f}\t'
-                    'Average CER {cer:.3f}\t'
-                    'Accuracy {acc_: .3f}\t'
-                    'Discriminator accuracy (micro) {acc: .3f}\t'
-                    'Discriminator precision (micro) {pre: .3f}\t'
-                    'Discriminator recall (micro) {rec: .3f}\t'
-                    'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
-
-            # saving
-            if best_wer is None or best_wer > wer:
-                best_wer = wer
-                print("Updating the final model!")
-                save_dummy = {}
-                for i in models.keys():
-                    save_dummy[i] = [models[i][0], models[i][1], models[i][-1].state_dict()] 
+                # Data loading
+                inputs, targets, input_percentages, target_sizes, accents = data
+                input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+                inputs = inputs.to(device)
                 
-                package = {'models': save_dummy , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
-                torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
-                
-            if args.checkpoint:
-                save_dummy = {}
-                for i in models.keys():
-                    save_dummy[i] = [models[i][0], models[i][1], models[i][-1].state_dict()]
-                package = {'models': save_dummy , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
-                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
+                # Forward pass
+                if not args.train_asr:
+                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                    m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+                    z_ = z * m # Forget Operation
+                    discriminator_out = discriminator(z_) # Discriminator network
+                    asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
+                else:
+                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                    decoder_out = decoder(z) # Decoder network
+                    asr_out, asr_out_sizes = asr(z, updated_lengths) # Predictor network
 
+                # Predictor metric
+                split_targets = []
+                offset = 0
+                for size in target_sizes:
+                    split_targets.append(targets[offset:offset + size])
+                    offset += size
+                decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
+                target_strings = target_decoder.convert_to_strings(split_targets)
 
-            # Exiting criteria
-            terminate_train = False
-            if best_cer is None or best_cer > cer:
-                best_cer = cer
-                poor_cer_list = []
-            else:
-                poor_cer_list.append(cer)
-                if len(poor_cer_list) >= args.patience:
-                    print("Exiting training loop...")
-                    terminate_train = True
-            if terminate_train:
-                break
-        # TODO will break one gpu and not the others
+                for x in range(len(target_strings)):
+                    transcript, reference = decoded_output[x][0], target_strings[x][0]
+                    wer_inst = target_decoder.wer(transcript, reference)
+                    cer_inst = target_decoder.cer(transcript, reference)
+                    total_wer += wer_inst
+                    total_cer += cer_inst
+                    num_tokens += len(reference.split())
+                    num_chars += len(reference.replace(' ', ''))
+
+                wer = float(total_wer) / num_tokens
+                cer = float(total_cer) / num_chars
+     
+                if not args.train_asr:
+                    # Discriminator metrics: fill in the confusion matrix.
+                    out, predicted = torch.max(discriminator_out, 1)
+                    for j in range(len(accents)):
+                        acc_weights[accents[j]] += 1
+                        if accents[j] == predicted[j].item():
+                            num = num + 1
+                        conf_mat[accents[j], predicted[j].item()] += 1
+                    length = length + len(accents)
+
+        # Discriminator metrics: compute metrics using confustion metrics.
+        for acc_type in range(len(accent)):
+            tps[acc_type] = conf_mat[acc_type, acc_type]
+            fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
+            fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
+            tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
+        class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+tps)
+        class_wise_f1 = 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
+        macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
+        weighted_precision, weighted_recall = ((acc_weights / acc_weights.sum()) * class_wise_precision).sum(), ((acc_weights / acc_weights.sum()) * class_wise_recall).sum()
+        weighted_f1 = 2 * weighted_precision * weighted_recall / (weighted_precision + weighted_recall)
+        micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
+        micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
+
+        # Logging to tensorboard.
+        writer.add_scalar('Validation/Average-WER', wer, epoch+1)
+        writer.add_scalar('Validation/Average-CER', cer, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Accuracy', num/length *100, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Precision', weighted_precision, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Recall', weighted_recall, epoch+1)
+        writer.add_scalar('Validation/Discriminator-F1', weighted_f1, epoch+1)
+        
+        print('Validation Summary Epoch: [{0}]\t'
+                'Average WER {wer:.3f}\t'
+                'Average CER {cer:.3f}\t'
+                'Accuracy {acc_: .3f}\t'
+                'Discriminator accuracy (micro) {acc: .3f}\t'
+                'Discriminator precision (micro) {pre: .3f}\t'
+                'Discriminator recall (micro) {rec: .3f}\t'
+                'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
+
+        
+        a += f"{epoch},{wer},{cer},{num/length *100},"
+        
+        for idx, accent_type in enumerate(accent_list):
+            a += f"{class_wise_precision[idx]},"
+        for idx, accent_type in enumerate(accent_list):
+            a += f"{class_wise_recall[idx]},"
+        for idx, accent_type in enumerate(accent_list):
+            a += f"{class_wise_f1[idx]},"
+        a += f"{d_avg_loss},{p_avg_loss},{alpha},{beta},{gamma}\n"
+
+        with open(loss_save, "w") as f:
+            f.write(a)
 
         d_avg_loss, p_avg_loss, p_d_avg_loss = 0, 0, 0
 
         # anneal lr
-        for i in scheduler:
-            i.step()
+        for j in models.values():
+            if j[-1]:
+                for g in j[-1].param_groups:
+                    g['lr'] = g['lr'] / args.learning_anneal
+        print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
+
+        # Exiting criteria
+        terminate_train = False
+        if best_cer is None or best_cer > cer:
+            best_cer = cer
+            poor_cer_list = []
+        else:
+            poor_cer_list.append(cer)
+            if len(poor_cer_list) >= args.patience:
+                print("Exiting training loop...")
+                terminate_train = True
+
+        if best_wer is None or best_wer > wer:
+            best_wer = wer
+            print("Updating the final model!")
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
+            torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+            
+        if args.checkpoint:
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
+            torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
+
+        if terminate_train:
+            break
 
         if not args.no_shuffle:
             print("Shuffling batches...")

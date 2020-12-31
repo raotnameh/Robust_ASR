@@ -18,7 +18,7 @@ from data.data_loader import get_accents
 from decoder import GreedyDecoder
 from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
 
-from utils import reduce_tensor, check_loss, Decoder_loss
+from utils import reduce_tensor, check_loss, Decoder_loss, validation
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--train-manifest', metavar='DIR',
@@ -243,34 +243,35 @@ if __name__ == '__main__':
                             audio_conf=audio_conf,
                             bidirectional=args.bidirectional)
         asr = asr.to(device)
-        asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-6,amsgrad=True)
+
         criterion = CTCLoss()
         models['predictor'] = [asr, criterion, asr_optimizer] 
 
         # Encoder and Decoder
         encoder = Encoder(num_modules = args.enco_modules, residual_bool = args.enco_res)
         encoder = encoder.to(device)
-        e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-6,amsgrad=True)
         models['encoder'] = [encoder, None, e_optimizer]
         decoder = Decoder()
         decoder = decoder.to(device)
         dec_loss = Decoder_loss(nn.MSELoss())
 
-        d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-6,amsgrad=True)
         models['decoder'] = [decoder, dec_loss, d_optimizer] 
 
         # Forget Network
         if not args.train_asr:
             fnet = ForgetNet(num_modules = args.forg_modules, residual_bool = args.forg_res, hard_mask_bool = True)
             fnet = fnet.to(device)
-            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-6,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
 
         # Discriminator
         if not args.train_asr:
             discriminator = DiscimnateNet(classes=len(accent),num_modules=args.disc_modules,residual_bool=args.disc_res)
             discriminator = discriminator.to(device)
-            discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-6,amsgrad=True)
             accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
             disc_loss_weights = torch.zeros(len(accent)) + eps
             for accent_type_f in accent_counts:
@@ -282,7 +283,13 @@ if __name__ == '__main__':
             dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
             models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer] 
         
-        # Printing the models
+    # Lr scheduler
+    scheduler = []
+    for i in models.keys():
+        scheduler.append(torch.optim.lr_scheduler.StepLR(models[i][-1], step_size=1, gamma=args.learning_anneal, verbose=True))
+
+    
+    # Printing the models
     print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
     
     #Creating the dataset
@@ -508,78 +515,20 @@ if __name__ == '__main__':
 
         start_ter = 0
         with torch.no_grad():
-            total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
-            conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
-            tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
-            acc_weights = np.ones((len(accent)))*eps
-            length, num = eps, eps
-            #Decoder used for evaluation
-            target_decoder = GreedyDecoder(labels)
-            for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
-                if args.dummy and i%2 == 1: break
+            wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
+        
+        a += f"{epoch},{wer},{cer},{num/length *100},"
+    
+        for idx, accent_type in enumerate(accent_list):
+            a += f"{class_wise_precision[idx]},"
+        for idx, accent_type in enumerate(accent_list):
+            a += f"{class_wise_recall[idx]},"
+        for idx, accent_type in enumerate(accent_list):
+            a += f"{class_wise_f1[idx]},"
+        a += f"{d_avg_loss},{p_avg_loss},{alpha},{beta},{gamma}\n"
 
-                # Data loading
-                inputs, targets, input_percentages, target_sizes, accents = data
-                input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
-                inputs = inputs.to(device)
-                
-                # Forward pass
-                if not args.train_asr:
-                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                    m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
-                    z_ = z * m # Forget Operation
-                    discriminator_out = discriminator(z_) # Discriminator network
-                    asr_out, asr_out_sizes = asr(z_, updated_lengths) # Predictor network
-                else:
-                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                    decoder_out = decoder(z) # Decoder network
-                    asr_out, asr_out_sizes = asr(z, updated_lengths) # Predictor network
-
-                # Predictor metric
-                split_targets = []
-                offset = 0
-                for size in target_sizes:
-                    split_targets.append(targets[offset:offset + size])
-                    offset += size
-                decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
-                target_strings = target_decoder.convert_to_strings(split_targets)
-
-                for x in range(len(target_strings)):
-                    transcript, reference = decoded_output[x][0], target_strings[x][0]
-                    wer_inst = target_decoder.wer(transcript, reference)
-                    cer_inst = target_decoder.cer(transcript, reference)
-                    total_wer += wer_inst
-                    total_cer += cer_inst
-                    num_tokens += len(reference.split())
-                    num_chars += len(reference.replace(' ', ''))
-
-                wer = float(total_wer) / num_tokens
-                cer = float(total_cer) / num_chars
-     
-                if not args.train_asr:
-                    # Discriminator metrics: fill in the confusion matrix.
-                    out, predicted = torch.max(discriminator_out, 1)
-                    for j in range(len(accents)):
-                        acc_weights[accents[j]] += 1
-                        if accents[j] == predicted[j].item():
-                            num = num + 1
-                        conf_mat[accents[j], predicted[j].item()] += 1
-                    length = length + len(accents)
-
-        # Discriminator metrics: compute metrics using confustion metrics.
-        for acc_type in range(len(accent)):
-            tps[acc_type] = conf_mat[acc_type, acc_type]
-            fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
-            fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
-            tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
-        class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+tps)
-        class_wise_f1 = 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
-        macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
-        weighted_precision, weighted_recall = ((acc_weights / acc_weights.sum()) * class_wise_precision).sum(), ((acc_weights / acc_weights.sum()) * class_wise_recall).sum()
-        weighted_f1 = 2 * weighted_precision * weighted_recall / (weighted_precision + weighted_recall)
-        micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
-        micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
-
+        with open(loss_save, "w") as f:
+            f.write(a)
         # Logging to tensorboard.
         writer.add_scalar('Validation/Average-WER', wer, epoch+1)
         writer.add_scalar('Validation/Average-CER', cer, epoch+1)
@@ -597,28 +546,16 @@ if __name__ == '__main__':
                 'Discriminator recall (micro) {rec: .3f}\t'
                 'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
 
-        
-        a += f"{epoch},{wer},{cer},{num/length *100},"
-        
-        for idx, accent_type in enumerate(accent_list):
-            a += f"{class_wise_precision[idx]},"
-        for idx, accent_type in enumerate(accent_list):
-            a += f"{class_wise_recall[idx]},"
-        for idx, accent_type in enumerate(accent_list):
-            a += f"{class_wise_f1[idx]},"
-        a += f"{d_avg_loss},{p_avg_loss},{alpha},{beta},{gamma}\n"
-
-        with open(loss_save, "w") as f:
-            f.write(a)
-
-        d_avg_loss, p_avg_loss, p_d_avg_loss = 0, 0, 0
-
-        # anneal lr
-        for j in models.values():
-            if j[-1]:
-                for g in j[-1].param_groups:
-                    g['lr'] = g['lr'] / args.learning_anneal
-        print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
+        # saving
+        if best_wer is None or best_wer > wer:
+            best_wer = wer
+            print("Updating the final model!")
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
+            torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+            
+        if args.checkpoint:
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
+            torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
         # Exiting criteria
         terminate_train = False
@@ -630,22 +567,20 @@ if __name__ == '__main__':
             if len(poor_cer_list) >= args.patience:
                 print("Exiting training loop...")
                 terminate_train = True
-
-        if best_wer is None or best_wer > wer:
-            best_wer = wer
-            print("Updating the final model!")
-            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
-            torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
-            
-        if args.checkpoint:
-            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
-            torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
-
         if terminate_train:
             break
+
+        d_avg_loss, p_avg_loss, p_d_avg_loss = 0, 0, 0
+
+        # anneal lr
+        for i in scheduler:
+            i.step()
 
         if not args.no_shuffle:
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
 
     writer.close()
+
+# TODO
+# logger fo rtraining combine the losses
