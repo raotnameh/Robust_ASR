@@ -8,7 +8,7 @@ train_ = "data/csvs/train7_sorted.csv"
 test_ = "data/csvs/dev4_sorted.csv"
 gpu_rank = 1
 def run(alpha,save):
-    command = f"python {file}.py --opt-level O2 --enco-modules 2 --enco-res --train-manifest {train_} --val-manifest {test_} --cuda --rnn-type gru --hidden-layers 5 --hidden-size 1024 --epochs 50 --lr 0.0001 --patience 10 --batch-size {batch} --checkpoint --gpu-rank {gpu_rank} --update-rule 2 --exp-name save/{save} --mw-alpha {alpha} --num-epochs 50 --train-asr"
+    command = f"python {file}.py --opt-level O2 --enco-modules 2 --enco-res --train-manifest {train_} --val-manifest {test_} --cuda --rnn-type gru --hidden-layers 5 --hidden-size 1024 --epochs 50 --lr 0.0001 --patience 10 --batch-size {batch} --checkpoint --gpu-rank {gpu_rank} --update-rule 2 --exp-name save/{save} --mw-alpha {alpha} --num-epochs 50 --train-asr --dummy"
 
     print('\n\n',command,'\n\n')
     os.system(command)

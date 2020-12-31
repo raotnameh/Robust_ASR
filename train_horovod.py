@@ -41,7 +41,7 @@ parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda t
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--max-norm', default=400, type=int, help='Norm cutoff to prevent explosion of gradients')
-parser.add_argument('--learning-anneal', default=1.1, type=float, help='Annealing applied to learning rate every epoch')
+parser.add_argument('--learning-anneal', default=0.95, type=float, help='Annealing applied to learning rate every epoch')
 parser.add_argument('--silent', dest='silent', action='store_true', help='Turn off progress tracking per iteration')
 parser.add_argument('--checkpoint', dest='checkpoint', action='store_true', help='Enables checkpoint saving of model')
 parser.add_argument('--checkpoint-per-batch', default=0, type=int, help='Save checkpoint per batch. 0 means never save')
@@ -111,7 +111,8 @@ parser.add_argument('--mw-gamma', type= float, default= 1,
                     help= 'weight for regularisation')             
 
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
-
+parser.add_argument('--fp16', action='store_true',
+                    help='training using fp16')
 
 def to_np(x):
     return x.cpu().numpy()
@@ -291,7 +292,7 @@ if __name__ == '__main__':
     # Lr scheduler
     scheduler = []
     for i in models.keys():
-        scheduler.append(torch.optim.lr_scheduler.StepLR(models[i][-1], step_size=1, gamma=args.learning_anneal, verbose=True))
+        scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(models[i][-1], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
 
     
     # Printing the models
@@ -359,7 +360,9 @@ if __name__ == '__main__':
         hvd.broadcast_parameters(models[i][0].state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(models[i][-1], root_rank=0)
         models[i][-1] = hvd.DistributedOptimizer(models[i][-1], named_parameters=models[i][0].named_parameters())
-        
+
+
+    scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False)   
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
@@ -384,24 +387,26 @@ if __name__ == '__main__':
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
                 p_counter += 1
                 # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                decoder_out = decoder(z) # Decoder network
-                asr_out, asr_out_sizes = asr(z, updated_lengths.cpu()) # Predictor network
-                # Loss                
-                asr_out = asr_out.transpose(0, 1)  # TxNxH
-                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
-                asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
-                loss = asr_loss + decoder_loss
+                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
+                    # Forward pass
+                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                    decoder_out = decoder(z) # Decoder network
+                    asr_out, asr_out_sizes = asr(z, updated_lengths.cpu()) # Predictor network
+                    # Loss                
+                    asr_out = asr_out.transpose(0, 1)  # TxNxH
+                    asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+                    asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
+                    decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
+                    loss = asr_loss + decoder_loss
                 p_loss = loss.item()
 
                 valid_loss, error = check_loss(loss, p_loss)
                 if valid_loss:
-                    loss.backward()
-                    e_optimizer.step()
-                    d_optimizer.step()
-                    asr_optimizer.step()
-                    
+                    scaler.scale(loss).backward()
+                    scaler.step(e_optimizer)
+                    scaler.step(d_optimizer)
+                    scaler.step(asr_optimizer)
+                    scaler.update()
                 else: 
                     print(error)
                     print("Skipping grad update")

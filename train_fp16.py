@@ -41,7 +41,7 @@ parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda t
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--max-norm', default=400, type=int, help='Norm cutoff to prevent explosion of gradients')
-parser.add_argument('--learning-anneal', default=1.1, type=float, help='Annealing applied to learning rate every epoch')
+parser.add_argument('--learning-anneal', default=0.95, type=float, help='Annealing applied to learning rate every epoch')
 parser.add_argument('--silent', dest='silent', action='store_true', help='Turn off progress tracking per iteration')
 parser.add_argument('--checkpoint', dest='checkpoint', action='store_true', help='Enables checkpoint saving of model')
 parser.add_argument('--checkpoint-per-batch', default=0, type=int, help='Save checkpoint per batch. 0 means never save')
@@ -286,7 +286,7 @@ if __name__ == '__main__':
     # Lr scheduler
     scheduler = []
     for i in models.keys():
-        scheduler.append(torch.optim.lr_scheduler.StepLR(models[i][-1], step_size=1, gamma=args.learning_anneal, verbose=True))
+        scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(models[i][-1], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
 
     
     # Printing the models
