@@ -109,15 +109,12 @@ parser.add_argument('--mw-beta', type= float, default= 1,
                     help= 'weight for discriminator loss')              
 parser.add_argument('--mw-gamma', type= float, default= 1,
                     help= 'weight for regularisation')             
-
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
 parser.add_argument('--fp16', action='store_true',
                     help='training using fp16')
 
 def to_np(x):
     return x.cpu().numpy()
-
-
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -323,7 +320,7 @@ if __name__ == '__main__':
     # Printing the parameters of all the different modules 
     [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
     accent_list = sorted(accent, key=lambda x:accent[x])
-    a = f"epoch,wer,cer,acc,"
+    a = f"epoch,epoch_time,wer,cer,acc,"
     for accent_type in accent_list:
         a += f"precision_{accent_type},"
     for accent_type in accent_list:
@@ -517,7 +514,7 @@ if __name__ == '__main__':
         with torch.no_grad():
             wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
         
-        a += f"{epoch},{wer},{cer},{num/length *100},"
+        a += f"{epoch},{epoch_time},{wer},{cer},{num/length *100},"
     
         for idx, accent_type in enumerate(accent_list):
             a += f"{class_wise_precision[idx]},"

@@ -84,6 +84,18 @@ class Decoder_loss():
 
         return loss_
 
+def weights_(args, eps):
+    accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
+    disc_loss_weights = torch.zeros(len(accent)) + eps
+    for accent_type_f in accent_counts:
+        if isinstance(accent_counts[accent_type_f], dict):
+            for accent_type_in_f in accent_counts[accent_type_f]:
+                if accent_type_in_f in accent_dict:
+                    disc_loss_weights[accent_dict[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
+    disc_loss_weights = torch.sum(disc_loss_weights) / disc_loss_weights
+
+    return disc_loss_weights
+
 def validation(test_loader,GreedyDecoder , models, args,accent,device,loss_save,labels,eps=0.0000000001):
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
