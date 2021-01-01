@@ -36,7 +36,7 @@ def check_loss(loss, loss_value):
     return loss_valid, error
 
 
-def load_model_components(device, model_path, forget, discriminator, ckpt_id, use_half):
+def load_model_components(device, model_path, forget, discriminator):
     package = torch.load(model_path, map_location="cpu")
     models = package['models']
     encoder_model, asr_model = models['encoder'][0], models['predictor'][0]
@@ -48,10 +48,10 @@ def load_model_components(device, model_path, forget, discriminator, ckpt_id, us
         if model_components[i] is None:
             continue
         model_components[i].eval()
-        model_components[i] = model_components[i].to(device)
+        model_components[i].to(device)
         if use_half:
             model_components[i] = model_components[i].half()
-    return model_components # e, f, d, asr
+    return model_components, package['accent_dict'] # e, f, d, asr
 
 def load_model(device, model_path, use_half):
     model = DeepSpeech.load_model(model_path)
@@ -96,7 +96,7 @@ def weights_(args, eps):
 
     return disc_loss_weights
 
-def validation(test_loader,GreedyDecoder , models, args,accent,device,loss_save,labels,eps=0.0000000001):
+def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001):
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
     acc_weights = np.ones((len(accent)))*eps

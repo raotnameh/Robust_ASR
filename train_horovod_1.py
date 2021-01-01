@@ -507,7 +507,7 @@ if __name__ == '__main__':
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
                 
             if args.checkpoint:
-                package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
+                package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
             # Exiting criteria
