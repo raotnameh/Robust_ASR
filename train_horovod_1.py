@@ -449,7 +449,7 @@ if __name__ == '__main__':
             for i_ in models.keys():
                 if i_ != 'discriminator': optimizers[i_].synchronize()
             scaler.update()
-
+            
             p_avg_loss += p_loss
             p_d_avg_loss += p_d_loss
             if hvd.rank() == 0:
