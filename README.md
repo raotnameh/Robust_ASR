@@ -16,6 +16,10 @@ If you want decoding to support beam search with an optional language model, ins
 git clone --recursive https://github.com/parlance/ctcdecode.git
 cd ctcdecode && pip install .
 ```
+Install horovod for multi-gpu training. Make sure [nccl](https://developer.nvidia.com/nccl) is installed.
+```
+HOROVOD_GPU_OPERATIONS=NCCL HOROVOD_WITH_PYTORCH=1 pip install horovod[pytorch]
+```
 
 Finally clone this repo and run this within the repo:
 ```
@@ -54,6 +58,11 @@ Sample csv files are present in the data/csvs folder for reference.
 python train.py --train-manifest data/csvs/train_sorted_EN_US.csv --val-manifest data/csvs/dev_sorted_EN_US.csv --cuda --rnn-type gru --hidden-layers 5 --hidden-size 1024 --epochs 50 --lr 0.001 --batch-size 32 --gpu-rank 1 --update-rule 1 --exp-name /path/to/save/the/results -mw-alpha 0.1 --mw-beta 0.2 --mw-gamma 0.6 --enco-modules 2 --enco-res --forg-modules 2 --forg-res --num-epochs 1 --checkpoint-per-batch 5000 --checkpoint --continue-from /path/to/saved/model.pth
 ```
 
+### Multi-GPU training a Model using Horovod.
+```
+horovodrun -np 2 -H localhost:2 python train_horovod.py --train-manifest data/csvs/train_sorted_EN_US.csv --val-manifest data/csvs/dev_sorted_EN_US.csv --cuda --rnn-type gru --hidden-layers 5 --hidden-size 1024 --epochs 50 --lr 0.001 --batch-size 32 --gpu-rank 1 --update-rule 1 --exp-name /path/to/save/the/results -mw-alpha 0.1 --mw-beta 0.2 --mw-gamma 0.6 --enco-modules 2 --enco-res --forg-modules 2 --forg-res --num-epochs 1 --checkpoint-per-batch 5000 --checkpoint --continue-from /path/to/saved/model.pth
+```
+
 Use `python train.py -h` for more parameters and options.
 
 
@@ -79,6 +88,10 @@ We support using kenlm based LMs. To build your own LM you need to use the KenLM
 By default, `test.py` use a `GreedyDecoder` which picks the highest-likelihood output label at each timestep. Repeated and blank symbols are then filtered to give the final output.
 
 A beam search decoder can optionally be used with the installation of the `ctcdecode` library as described in the Installation section. The `test` scripts have a `--decoder` argument. To use the beam decoder, add `--decoder beam`. 
+
+## Sampe-dataset
+
+SOON
 
 ## Pre-trained models
 
