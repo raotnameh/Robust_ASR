@@ -154,7 +154,9 @@ if __name__ == '__main__':
 
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' in models and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
-        else: del models['forget_net'], del models['discrimator']
+        else: 
+            del models['forget_net']
+            del models['discrimator']
 
         if not args.finetune: # If continuing training after the last epoch.
             start_epoch = package['start_epoch'] - 1  # Index start at 0 for training
@@ -225,7 +227,7 @@ if __name__ == '__main__':
     # Lr scheduler
     scheduler = []
     for i in models.keys():
-        scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(optimizers[i][-1], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
+        scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(optimizers[i], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
 
     
     # Printing the models
