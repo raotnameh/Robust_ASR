@@ -247,15 +247,14 @@ if __name__ == '__main__':
                                                 num_replicas=hvd.size(), rank=hvd.rank())
 
     train_loader = AudioDataLoader(train_dataset,
-                                   num_workers=args.num_workers, batch_sampler=train_sampler)
+                                   num_workers=args.num_workers, batch_sampler=train_sampler,pin_memory=True)
     disc_train_loader = AudioDataLoader(disc_train_dataset,
-                                   num_workers=args.num_workers, batch_sampler=disc_train_sampler)
+                                   num_workers=args.num_workers, batch_sampler=disc_train_sampler,pin_memory=True)    
+    test_loader = AudioDataLoader(test_dataset, batch_size=int(1.5*args.batch_size),
+                                  num_workers=args.num_workers,pin_memory=True)
     
     disc_train_sampler.shuffle(start_epoch)
     disc_ = iter(disc_train_loader)
-
-    test_loader = AudioDataLoader(test_dataset, batch_size=int(1.5*args.batch_size),
-                                  num_workers=args.num_workers)
 
     if args.no_sorta_grad:
         print("Shuffling batches for the following epochs")
@@ -473,7 +472,6 @@ if __name__ == '__main__':
                 wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
             
             a += f"{epoch},{epoch_time},{wer},{cer},{num/length *100},"
-        
             for idx, accent_type in enumerate(accent_list):
                 a += f"{class_wise_precision[idx]},"
             for idx, accent_type in enumerate(accent_list):
@@ -512,7 +510,6 @@ if __name__ == '__main__':
                 package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
-
             # Exiting criteria
             terminate_train = False
             if best_cer is None or best_cer > cer:
@@ -526,7 +523,6 @@ if __name__ == '__main__':
             if terminate_train:
                 break
         # TODO will break one gpu and not the others
-
         d_avg_loss, p_avg_loss, p_d_avg_loss = 0, 0, 0
 
         # anneal lr
