@@ -105,12 +105,14 @@ parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
                     help='Use simple spectral augmentation on mel spectograms.')
 
 if __name__ == '__main__':
+    args = parser.parse_args()
+    if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_rank
+    
     # Initializing horovod distributed training
     hvd.init()
     torch.cuda.set_device(hvd.local_rank())
 
     #Lables for the discriminator
-    args = parser.parse_args()
     accent_dict = get_accents(args.train_manifest) 
     accent = list(accent_dict.values())
 
