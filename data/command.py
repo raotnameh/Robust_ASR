@@ -23,3 +23,16 @@ for i in alpha:
     break
 
 print(time.time() - a)
+
+python train_horovod.py --train-manifest data/csvs/train.csv --val-manifest data/csvs/dev.csv --cuda --version V1.0
+--enco-modules 2 --enco-res
+--forg-modules 2 --forg-res
+--disc-modules 2 --disc-res --update-rule 2
+--rnn-type gru --hidden-layers 5 --hidden-size 1024
+--epochs 50 --lr 0.001 --patience 10 --batch-size 32
+--checkpoint --checkpoint-per-batch 1000 --continue-from save/models/ckpt_final.pth --finetune
+--gpu-rank 0,1,2,4 --learning-anneal 0.95
+--exp-name save/ --num-epochs 50 --seed 123456
+--mw-alpha 0.00001 --mw-beta 0.6 --mw-gamma 0.2
+--train-asr --dummy --fp16
+
