@@ -59,6 +59,7 @@ parser.add_argument('--dummy', action='store_true',
 parser.add_argument('--num-epochs', default=1, type=int,
                     help='choosing the number of iterations to train the discriminator in each training iteration')   
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
+parser.add_argument('--silent', dest='silent', action='store_true', help='Turn off progress tracking per iteration')
 
 # Model arguements
 parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_false', default=True,
@@ -79,7 +80,8 @@ parser.add_argument('--update-rule', default=2, type=int,
                     help='train the discriminator k times')
 parser.add_argument('--train-asr', action='store_true',
                     help='training only the ASR')
-parser.add_argument('--silent', dest='silent', action='store_true', help='Turn off progress tracking per iteration')
+parser.add_argument('--disc-kl-loss', action='store_true',
+                    help='use kl divergence loss for discriminator')
 
 # Mixed precision training
 parser.add_argument('--fp16', action='store_true',
@@ -222,7 +224,10 @@ if __name__ == '__main__':
             discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             # Weighted loss depending on the class count
             disc_loss_weights = weights_(args, eps, accent, accent_dict)     
-            dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
+            if not args.disc_kl_loss: dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
+            else: 
+                dis_loss = nn.KLDivLoss()
+                disc_target = 1/len(accent) * torch.ones(args.batch_size, len(accent)).to(device)
             models['discriminator'] = [discriminator, dis_loss, discriminator_optimizer]
 
     # creating a separate dict for optimizers, will help in saving models later
@@ -383,7 +388,8 @@ if __name__ == '__main__':
                     z_ = z * m # Forget Operation
                     discriminator_out = models['discriminator'][0](z_) # Discriminator network
                     # Loss
-                    discriminator_loss = models['discriminator'][1](discriminator_out, accents_)
+                    if not args.disc_kl_loss: discriminator_loss = models['discriminator'][1](discriminator_out, accents_)
+                    else: discriminator_loss = models['discriminator'][1](nn.functional.log_softmax(discriminator_out), disc_target)
                 
                 
                 scaler.scale(discriminator_loss).backward()
@@ -402,14 +408,15 @@ if __name__ == '__main__':
 
             # Random labels for adversarial learning of the predictor network                
             # Shuffling the elements of a list s.t. elements are not same at the same indices
-            dummy = [] 
-            for acce in accents:
-                while True:
-                    d = random.randint(0,len(accent)-1)
-                    if acce != d:
-                        dummy.append(d)
-                        break
-            accents = torch.tensor(dummy).to(device)
+            if not args.disc_kl_loss:
+                dummy = [] 
+                for acce in accents:
+                    while True:
+                        d = random.randint(0,len(accent)-1)
+                        if acce != d:
+                            dummy.append(d)
+                            break
+                accents = torch.tensor(dummy).to(device)
 
             [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
             p_counter += 1
@@ -423,7 +430,8 @@ if __name__ == '__main__':
                 discriminator_out = models['discriminator'][0](z_) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths.cpu()) # Predictor network
                 # Loss
-                discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.mw_beta
+                if not args.disc_kl_loss: discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.mw_beta
+                else: discriminator_loss = models['discriminator'][1](nn.functional.log_softmax(discriminator_out), disc_target) * args.mw_beta
                 p_d_loss = discriminator_loss.item()
                 mask_regulariser_loss = (m * (1-m)).mean() * args.mw_gamma
 
