@@ -360,7 +360,6 @@ if __name__ == '__main__':
             if args.num_epochs > epoch: prob -= diff
             else: prob = prob_ 
             update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
-            d_avg_loss_iter = eps
             
             for k in range(int(update_rule)): #updating the discriminator only  
                 
@@ -394,14 +393,12 @@ if __name__ == '__main__':
 
                 d_loss = discriminator_loss.item()
                 d_avg_loss += d_loss
-                d_avg_loss_iter += d_loss
                 if hvd.rank() == 0:
-                    writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_avg_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
                     if not args.silent: print(f"Epoch: [{epoch+1}][{i+1,k+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
             if hvd.rank() == 0:
                 # Logging to tensorboard.
-                writer.add_scalar('Train/Discriminator-Per-Iteration-Loss', d_avg_loss_iter/(update_rule+eps), len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
+                writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_avg_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
 
             # Random labels for adversarial learning of the predictor network                
             # Shuffling the elements of a list s.t. elements are not same at the same indices

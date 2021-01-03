@@ -220,7 +220,8 @@ if __name__ == '__main__':
     # Lr scheduler
     scheduler = []
     for i in models.keys():
-        scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(optimizers[i], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
+        models[i][0].to(device)
+        scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(models[i][-1], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
 
     
     # Printing the models
@@ -307,29 +308,28 @@ if __name__ == '__main__':
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
-                    z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                    decoder_out = decoder(z) # Decoder network
-                    asr_out, asr_out_sizes = asr(z, updated_lengths.cpu()) # Predictor network
+                    z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                    decoder_out = models['decoder'][0](z) # Decoder network
+                    asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths.cpu()) # Predictor network
                     # Loss                
                     asr_out = asr_out.transpose(0, 1)  # TxNxH
-                    asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+                    asr_loss = models['predictor'][1](asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
                     asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                    decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
+                    decoder_loss = models['decoder'][1].forward(inputs, decoder_out, input_sizes,device) * args.mw_alpha
                     loss = asr_loss + decoder_loss
-                p_loss = loss.item()
 
+                p_loss = loss.item()
                 valid_loss, error = check_loss(loss, p_loss)
                 if valid_loss:
                     scaler.scale(loss).backward()
-                    scaler.step(e_optimizer)
-                    scaler.step(d_optimizer)
-                    scaler.step(asr_optimizer)
-                    scaler.update()
+                    for i_ in models.keys():
+                        scaler.step(models[i_][-1])
                 else: 
                     print(error)
                     print("Skipping grad update")
                     p_loss = 0.0
-                 
+                scaler.update()
+
                 p_avg_loss += p_loss
                 # Logging to tensorboard and train.log.
                 writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
@@ -340,7 +340,6 @@ if __name__ == '__main__':
             if args.num_epochs > epoch: prob -= diff
             else: prob = prob_ 
             update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
-            d_avg_loss_iter = eps
             
             for k in range(int(update_rule)): #updating the discriminator only  
                 
@@ -359,24 +358,24 @@ if __name__ == '__main__':
                 accents_ = torch.tensor(accents_).to(device)
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
-                    z,updated_lengths = encoder(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Encoder network
-                    m = fnet(inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Forget network
+                    z,updated_lengths = models['encoder'][0](inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Encoder network
+                    m = models['forget_net'][0](inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Forget network
                     z_ = z * m # Forget Operation
-                    discriminator_out = discriminator(z_) # Discriminator network
+                    discriminator_out = models['discriminator'][0](z_) # Discriminator network
                     # Loss
-                    discriminator_loss = dis_loss(discriminator_out, accents_)
-                d_loss = discriminator_loss.item()
-                d_avg_loss += d_loss
-                d_avg_loss_iter += d_loss
+                    discriminator_loss = models['discriminator'][1](discriminator_out, accents_)
+                
                 
                 scaler.scale(discriminator_loss).backward()
-                scaler.step(discriminator_optimizer)
+                scaler.step(optimizers['discriminator'])
                 scaler.update()
-                if not args.silent: print(f"Epoch: [{epoch+1}][{i+1,k+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
-            # Logging to tensorboard.
-            writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_avg_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
-            writer.add_scalar('Train/Discriminator-Per-Iteration-Loss', d_avg_loss_iter/(update_rule+eps), len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
+                d_loss = discriminator_loss.item()
+                d_avg_loss += d_loss
+                
+                if not args.silent: print(f"Epoch: [{epoch+1}][{i+1,k+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
+                # Logging to tensorboard.
+                writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
 
             # Random labels for adversarial learning of the predictor network                
             # Shuffling the elements of a list s.t. elements are not same at the same indices
@@ -394,42 +393,38 @@ if __name__ == '__main__':
             
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
-                z,updated_lengths = encoder(inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                decoder_out = decoder(z) # Decoder network
-                m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+                z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                decoder_out = models['decoder'][0](z) # Decoder network
+                m = models['forget_net'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
                 z_ = z * m # Forget Operation
-                discriminator_out = discriminator(z_) # Discriminator network
-                asr_out, asr_out_sizes = asr(z_, updated_lengths.cpu()) # Predictor network
+                discriminator_out = models['discriminator'][0](z_) # Discriminator network
+                asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths.cpu()) # Predictor network
                 # Loss
-                discriminator_loss = dis_loss(discriminator_out, accents) * beta
+                discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.mw_beta
                 p_d_loss = discriminator_loss.item()
-                mask_regulariser_loss = (m * (1-m)).mean() * gamma
+                mask_regulariser_loss = (m * (1-m)).mean() * args.mw_gamma
 
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
-                asr_loss = criterion(asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+                asr_loss = models['predictor'][1](asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                decoder_loss = dec_loss.forward(inputs, decoder_out, input_sizes,device) * alpha
-                loss = asr_loss + decoder_loss + mask_regulariser_loss
-            
-            p_loss = loss.item()
-            
+                decoder_loss = models['decoder'][1].forward(inputs, decoder_out, input_sizes,device) * args.mw_alpha
+                
+            loss = asr_loss + decoder_loss + mask_regulariser_loss
             scaler.scale(discriminator_loss).backward(retain_graph=True)
-            e_optimizer.zero_grad()
-            d_optimizer.zero_grad()
+            models['encoder'][-1].zero_grad()
 
-
+            p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
             if valid_loss:
                 scaler.scale(loss).backward()
-                scaler.step(e_optimizer)
-                scaler.step(d_optimizer)
-                scaler.step(asr_optimizer)
-                scaler.step(fnet_optimizer)
+                for i_ in models.keys():
+                        if i_ != 'discriminator': scaler.step(models[i_][-1])
             else: 
                 print(error)
                 print("Skipping grad update")
                 p_loss = 0.0
             scaler.update()
+            
             p_avg_loss += p_loss
             p_d_avg_loss += p_d_loss
             # Logging to tensorboard and train.log.
@@ -481,15 +476,15 @@ if __name__ == '__main__':
                 'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
 
         # saving
-            if best_wer is None or best_wer > wer:
-                best_wer = wer
-                print("Updating the final model!")
-                package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_}
-                torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
-                
-            if args.checkpoint:
-                package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_}
-                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
+        if best_wer is None or best_wer > wer:
+            best_wer = wer
+            print("Updating the final model!")
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_}
+            torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+            
+        if args.checkpoint:
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_}
+            torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
         # Exiting criteria
         terminate_train = False
