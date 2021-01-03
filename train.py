@@ -115,6 +115,9 @@ if __name__ == '__main__':
     accent_dict = get_accents(args.train_manifest) 
     accent = list(accent_dict.values())
 
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.enabled = True
+    
     # Set seeds for determinism
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
