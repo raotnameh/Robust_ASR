@@ -213,9 +213,9 @@ if __name__ == '__main__':
             discriminator = DiscimnateNet(classes=len(accent),num_modules=args.disc_modules,residual_bool=args.disc_res)
             discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             # Weighted loss depending on the class count
-            disc_loss_weights = weights_(args, eps)     
+            disc_loss_weights = weights_(args, eps, accent, accent_dict)     
             dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
-            models['discrimator'] = [discriminator, dis_loss, discriminator_optimizer]
+            models['discriminator'] = [discriminator, dis_loss, discriminator_optimizer]
 
     # Lr scheduler
     scheduler = []
@@ -367,7 +367,7 @@ if __name__ == '__main__':
                 
                 
                 scaler.scale(discriminator_loss).backward()
-                scaler.step(optimizers['discriminator'])
+                scaler.step(models['discriminator'][-1])
                 scaler.update()
 
                 d_loss = discriminator_loss.item()

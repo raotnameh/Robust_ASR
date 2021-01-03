@@ -1,6 +1,6 @@
 import torch
 import torch.distributed as dist
-
+import pandas as pd
 from model import DeepSpeech
 
 import os
@@ -84,7 +84,7 @@ class Decoder_loss():
 
         return loss_
 
-def weights_(args, eps):
+def weights_(args, eps, accent, accent_dict):
     accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
     disc_loss_weights = torch.zeros(len(accent)) + eps
     for accent_type_f in accent_counts:
@@ -114,9 +114,9 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
         # Forward pass
         if not args.train_asr:
             z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-            m = fnet(inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+            m = models['forget_net'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
             z_ = z * m # Forget Operation
-            discriminator_out = models['discrimator'][0](z_) # Discriminator network
+            discriminator_out = models['discriminator'][0](z_) # Discriminator network
             asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
         else:
             z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
