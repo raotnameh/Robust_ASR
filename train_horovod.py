@@ -112,7 +112,7 @@ if __name__ == '__main__':
     # Initializing horovod distributed training
     hvd.init()
     torch.cuda.set_device(hvd.local_rank())
-
+    torch.backends.cudnn.benchmark = False
     #Lables for the discriminator
     accent_dict = get_accents(args.train_manifest) 
     accent = list(accent_dict.values())
