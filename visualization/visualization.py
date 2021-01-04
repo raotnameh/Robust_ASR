@@ -1,5 +1,3 @@
-#%%
-#from pca import *
 import torch
 import numpy as np
 import numpy as np
@@ -12,68 +10,46 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from tqdm import tqdm
 import math
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA, TruncatedSVD, KernelPCA, LatentDirichletAllocation
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 
 def p_plot(z, y, exp_name):
+
     principalComponents = print_pca(z, y)
-
-    #x_max = np.max(principalComponents)#[:,0]),np.max(principalComponents[:,1])
-    #x_min = np.min(principalComponents)#[:,0]),np.min(principalComponents[:,1])
-
-
     x_max, y_max = np.max(principalComponents[:,0]),np.max(principalComponents[:,1])
     x_min, y_min = np.min(principalComponents[:,0]),np.min(principalComponents[:,1])
 
-    #principal_df = pd.DataFrame(data = principalComponents, columns = ['principal component 1', 'principal component 2'])
     plt.scatter(principalComponents[:, 0], principalComponents[:, 1], s= 50, c=y, cmap='Spectral')
     plt.gca().set_aspect('equal', 'datalim')
     plt.colorbar(boundaries=np.arange(3)-0.5).set_ticks(np.arange(2))
     plt.title('Visualizing for experiment: {}'.format(exp_name), fontsize=24)
-    plt.xlabel('Component 1')
-    plt.ylabel('Component 2')
+    plt.xlabel('Embedding Component 1')
+    plt.ylabel('Embedding Component 2')
     plt.xlim(x_min - 0.1, x_max + 0.1)
     plt.ylim(y_min - 0.1, y_max + 0.1)
 
     plt.show()
 
 def print_pca(x, y):
-    import numpy as np
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    from metric_learn import NCA
-    #import umap
-    #sns.set(style='white', context='notebook', rc={'figure.figsize':(14,10)})
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.decomposition import PCA, TruncatedSVD, KernelPCA, LatentDirichletAllocation
-    from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+
     scaler = StandardScaler()
-    #clf =  LDA(n_components=1)
-    nca = NCA(max_iter = 25, n_components = 2, verbose = True)
-    #KPCA = KernelPCA(n_components=2, kernel='rbf')
-    #up = umap.UMAP()
+    
     pca = PCA(n_components=50)
-    #pca = TruncatedSVD(n_components=100)
+
     tsne = TSNE(n_components=2, 
         verbose = 0, 
         n_iter = 1000,
         learning_rate= 100,
         perplexity=30)
+
     scaler.fit(x)
     x = scaler.transform(x)
-    #x = pca.fit_transform(x)
+    x = pca.fit_transform(x)
     x = tsne.fit_transform(x)
-    #clf.fit(x, y)
-
-    #x_min = np.amin(x, axis = 0)
-
-    #print(x_min)
-
-    #x = x - x_min[:,np.newaxis].T
-
-    #print(np.amin(x, axis = 0))
-
-    #clf.fit(x)
-
-    #x = nca.fit_transform(x, y)
 
     return x
 
@@ -97,8 +73,9 @@ def vis(path, file_name):
     p_plot(z_t,y_t, file_name+"z tilde")
 
 
-path = '/media/data_dump/asr/atul/visual/dev_sorted_EN_US'
+if __name__ = '__main__':
+    path = 'path to files'
+    files = 'files'
 
-vis(path,files)
+    vis(path,files)
 
-# %%
