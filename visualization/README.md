@@ -13,5 +13,7 @@ tSNE plot of z_tilde:
 
 To run get the above plots, you must first extract the embeddings from torch output and convert into np array. To do this run the following command:
 ```
-dd
+python extractVectors.py --path <path to torch embeddings> --path-aug <augment path> --save <np arrat save file path> --batchsz <batch size of embedding>
 ```
+
+Once the .npy files have been created. Run visualization.py to do the final visualization.
