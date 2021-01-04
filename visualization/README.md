@@ -12,6 +12,6 @@ tSNE plot of z_tilde:
 <img src="https://github.com/raotnameh/Robust_ASR/blob/master/visualization/z_t.png" width="250" height="250">
 
 To run get the above plots, you must first extract the embeddings from torch output and convert into np array. To do this run the following command:
-'''
+```
 dd
-'''
+```
