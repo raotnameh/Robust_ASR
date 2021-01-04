@@ -11,9 +11,9 @@ tSNE plot of z_tilde:
 
 <img src="https://github.com/raotnameh/Robust_ASR/blob/master/visualization/z_t.png" width="250" height="250">
 
-To run get the above plots, you must first extract the embeddings from torch output and convert into np array. To do this run the following command:
+To run get the above plots, you must first extract the embeddings from torch output and convert into Numpy array. To do this run the following command:
 ```
-python extractVectors.py --path <path to torch embeddings> --path-aug <augment path> --save <np arrat save file path> --batchsz <batch size of embedding>
+python extractVectors.py --path <path to torch embeddings> --path-aug <augment path> --save <np Numpy array save file path> --batchsz <batch size of embedding>
 ```
 
 
