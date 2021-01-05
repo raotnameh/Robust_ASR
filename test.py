@@ -8,37 +8,21 @@ from data.data_loader import SpectrogramDataset, AudioDataLoader
 from decoder import GreedyDecoder
 from utils import load_model_components
 
-from data.data_loader import accent as accent_dict
-
 parser = argparse.ArgumentParser(description='DeepSpeech transcription')
 parser.add_argument('--test-manifest', metavar='DIR',
                     help='path to validation manifest csv', default='data/test_manifest.csv')
 parser.add_argument('--batch-size', default=20, type=int, help='Batch size for testing')
 parser.add_argument('--num-workers', default=32, type=int, help='Number of workers used in dataloading')
-# parser.add_argument('--verbose', action="store_true", help="print out decoded output and error of each sample")
+parser.add_argument('--save-representation', default=False, help="Saves outtput representations z, z_, and m")
 parser.add_argument('--save-output', default=False, help="Saves output of model from test to this file_path")
-parser.add_argument('--gpu', dest='gpu', type=str, help='GPU to be used', required=True)
+parser.add_argument('--gpu-rank', dest='gpu', type=str, help='GPU to be used', required=True)
 parser.add_argument('--cuda', action='store_true', default=False, help='whether to use cuda or not')
-parser.add_argument('--half', action='store_true', default=False, help='whether to use half precision or not')
 # checkpoint loading args
 parser.add_argument('--model-path', dest='model_path', type=str, help='Path to "model" directory, where weights of component of models are saved', required=True)
 parser.add_argument('--f', dest='forget', action='store_true', required=False, help='Whether to include forget module or not')
 parser.add_argument('--d', dest='discriminate', action='store_true', required=False, help='Whether to include discriminator module or not')
-parser.add_argument('--ckpt-id', dest='ckpt_id', default='final', help='checkpoint id to load from model_path directory for component modules')
 # decoder args
 parser.add_argument('--decoder', dest='decoder', default='greedy', help='type of decoder to use.')
-# audio conf
-parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')
-parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
-parser.add_argument('--window', default='hamming', help='Window type for spectrogram generation')
-parser.add_argument('--noise-dir', default=None,
-                    help='Directory to inject noise into audio. If default, noise Inject not added')
-parser.add_argument('--noise-prob', default=0.4, help='Probability of noise being added per sample')
-parser.add_argument('--noise-min', default=0.0,
-                    help='Minimum noise level to sample from. (1.0 means all noise, not original signal)', type=float)
-parser.add_argument('--noise-max', default=0.5,
-                    help='Maximum noise levels to sample from. Maximum 1.0', type=float)
-parser.add_argument('--sample-rate', default=16000, type=int, help='Sample rate')
 
 # model compnents: e, f, d, asr
 def forward_call(model_components, inputs, inputs_sizes): 
@@ -53,7 +37,7 @@ def forward_call(model_components, inputs, inputs_sizes):
     return asr_out, asr_out_sizes, disc_out, a, z, updated_lengths, m
 
 
-def evaluate(test_loader, device, model_components, target_decoder, save_output=None, verbose=False, half=False):
+def evaluate(test_loader,accent_dict,device,model_components,target_decoder):
     eps = 0.0000000001
     accent = list(accent_dict.values())
     dict_z = []
@@ -78,7 +62,7 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
             # Forward pass
             asr_out, asr_out_sizes, disc_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes.type(torch.LongTensor).to(device))
             #saving z and z_
-            if args.save_output:
+            if args.save_representation:
                 dict_z.append([z.cpu(),accents,updated_lengths]) 
                 dict_z_.append([z_.cpu(),accents,updated_lengths])
                 if m is not None: dict_m.append([m.cpu(),accents,updated_lengths])
@@ -90,7 +74,7 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
                 offset += size
             decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
             target_strings = target_decoder.convert_to_strings(split_targets)
-            if save_output is not None:
+            if args.save_output is not None:
                 # add output to data array, and continue
                 output_data.append((asr_out.cpu(), asr_out_sizes.cpu(), target_strings))
 
@@ -134,26 +118,25 @@ def evaluate(test_loader, device, model_components, target_decoder, save_output=
     
     print('Average WER {wer:.3f}\t'
           'Average CER {cer:.3f}\t'.format(wer=wer, cer=cer))
-    #saving z and z_
-    if args.save_output:
-        torch.save(dict_z,f"{args.save_output}/z.pth") 
-        torch.save(dict_z_,f"{args.save_output}/z_.pth")
-        torch.save(dict_m,f"{args.save_output}/m.pth")
-        torch.save(output_data, f"{args.save_output}/out.pth")
+    #saving
+    if args.save_representation:
+        torch.save(dict_z,f"{args.save_representation}/z.pth") 
+        torch.save(dict_z_,f"{args.save_representation}/z_.pth")
+        torch.save(dict_m,f"{args.save_representation}/m.pth")
+    if args.save_output: torch.save(output_data, f"{args.save_output}/out.pth")
 
 
 if __name__ == '__main__':
     args = parser.parse_args()
     torch.set_grad_enabled(False)
-    device = torch.device("cuda" if args.cuda else "cpu")
-    print(device)
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
-    model_components = load_model_components(device, args.model_path, args.forget, args.discriminate, args.ckpt_id, args.half)
-    
+    device = torch.device(f"cuda:{args.gpu_rank}" if args.cuda else "cpu")
+
     if args.forget:
         assert model_components[1] is not None, "forget net not found in checkpoint"
     if args.discriminate:
         assert model_components[1] is not None, "discriminate net not found in checkpoint"
+
+    model_components, accent_dict = load_model_components(device, args.model_path, args.forget, args.discriminate)
 
     #Loading the configuration apply to the audio and labels of asr
     audio_conf = model_components[3].audio_conf
@@ -184,9 +167,7 @@ if __name__ == '__main__':
                                   num_workers=args.num_workers)
 
     evaluate(test_loader=test_loader,
+                                     accent_dict = accent_dict,
                                      device=device,
                                      model_components=model_components,
-                                     target_decoder=decoder,
-                                     save_output=False,
-                                     verbose=False,
-                                     half=args.half)
+                                     target_decoder=decoder,)

@@ -5,5 +5,3 @@ wget
 librosa
 tqdm
 matplotlib
-tensorboasrd 
-pandas 
