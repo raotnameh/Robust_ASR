@@ -147,7 +147,7 @@ if __name__ == '__main__':
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
         models = package['models'] 
-        labels, audio_conf, version_ = models['predictor'][0].labels, models['predictor'][0].audio_conf, package['version']
+        labels, audio_conf, version_, start_iter = models['predictor'][0].labels, models['predictor'][0].audio_conf, package['version'], package['start_iter']
 
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' in models and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"

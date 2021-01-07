@@ -155,7 +155,7 @@ if __name__ == '__main__':
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
         models = package['models'] 
-        labels, audio_conf, version_ = models['predictor'][0].labels, models['predictor'][0].audio_conf, package['version']
+        labels, audio_conf, version_, start_iter = models['predictor'][0].labels, models['predictor'][0].audio_conf, package['version'], package['start_iter']
 
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' in models and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
@@ -171,6 +171,7 @@ if __name__ == '__main__':
                 start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
                 start_iter = 0
             else:
+                print()
                 start_iter += 1
             best_wer = package['best_wer']
             best_cer = package['best_cer']
@@ -325,7 +326,7 @@ if __name__ == '__main__':
 
             if hvd.rank() == 0 :
                 if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
-                    package = {'models': models , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
+                    package = {'models': models , 'start_epoch': epoch, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
                     torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
             
             if args.train_asr: # Only trainig the ASR component
