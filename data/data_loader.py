@@ -174,7 +174,6 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
             self.accent = get_accents(manifest_filepath)
         else:   
             self.accent =accent
-        print(self.accent)
         self.size = len(ids)
         self.labels_map = dict([(labels[i], i) for i in range(len(labels))])
         super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment)

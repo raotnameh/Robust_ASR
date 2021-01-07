@@ -167,12 +167,15 @@ if __name__ == '__main__':
             best_wer = package['best_wer']
             best_cer = package['best_cer']
             poor_cer_list = package['poor_cer_list']
+            a = package['train.log']
         else:
+            a = ""
             version_ = args.version
             for i in models:
                 models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
 
     else:
+        a = ""
         #Loading the labels
         with open(args.labels_path) as label_file:
                 labels = str(''.join(json.load(label_file)))
@@ -262,7 +265,7 @@ if __name__ == '__main__':
     # Printing the parameters of all the different modules 
     if not args.silent: [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
     accent_list = sorted(accent, key=lambda x:accent[x])
-    a = f"epoch,epoch_time,wer,cer,acc,"
+    a += f"epoch,epoch_time,wer,cer,acc,"
     for accent_type in accent_list:
         a += f"precision_{accent_type},"
     for accent_type in accent_list:
@@ -303,7 +306,7 @@ if __name__ == '__main__':
             inputs = inputs.to(device)
 
             if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
-                package = {'models': models , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_}
+                package = {'models': models , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
             
             if args.train_asr: # Only trainig the ASR component
@@ -483,11 +486,11 @@ if __name__ == '__main__':
         if best_wer is None or best_wer > wer:
             best_wer = wer
             print("Updating the final model!")
-            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_}
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
             torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
             
         if args.checkpoint:
-            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_}
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
             torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
         # Exiting criteria
