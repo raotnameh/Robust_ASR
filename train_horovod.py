@@ -290,7 +290,8 @@ if __name__ == '__main__':
     prob /= np.sum(prob)
     prob_ = [0 for i in prob]
     prob_[-1] = 1
-    if not args.silent: print(f"Initial Probability to udpate to the discrimiantor: {prob}")
+    if hvd.rank() == 0: 
+        if not args.silent: print(f"Initial Probability to udpate to the discrimiantor: {prob}")
     diff = np.array([ prob[i] - prob[-1-i] for i in range(len(prob))])
     diff /= len(train_sampler)*args.num_epochs
 
