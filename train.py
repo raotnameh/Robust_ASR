@@ -146,16 +146,19 @@ if __name__ == '__main__':
     
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
-        models, labels, audio_conf, version_ = package['models'], models['predictor'][0].labels, models['predictor'][0].audio_conf, package['version']
+        models = package['models'] 
+        labels, audio_conf, version_ = models['predictor'][0].labels, models['predictor'][0].audio_conf, package['version']
 
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' in models and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
         else: 
-            del models['forget_net']
-            del models['discrimator']
+            try: 
+                del models['forget_net']
+                del models['discrimator']
+            except: pass
 
         if not args.finetune: # If continuing training after the last epoch.
-            start_epoch = package['start_epoch'] - 1  # Index start at 0 for training
+            start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
                 start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
                 start_iter = 0
