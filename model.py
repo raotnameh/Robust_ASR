@@ -379,10 +379,10 @@ class Encoder(nn.Module):
                 stride_1, stride_2, input_channels = (1, 1), (1, 1), 32
             self.modules_list.append(
                                     nn.ModuleDict({
-                                    'conv_1': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
-                                    'batch_norm_1': nn.BatchNorm2d(32),
-                                    'conv_2': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
-                                    'batch_norm_2': nn.BatchNorm2d(32),
+                                    'sex': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
+                                    'df': nn.BatchNorm2d(32),
+                                    'dewf': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
+                                    'efregg': nn.BatchNorm2d(32),
                                     })
                                     )
         self.modules_list = nn.ModuleList(self.modules_list)
@@ -393,11 +393,11 @@ class Encoder(nn.Module):
     def forward(self, input_x, lengths):
 
         for i, module_dict in enumerate(self.modules_list):
-            x = self.hard_tanh(module_dict['batch_norm_1'](module_dict['conv_1'](input_x)))
-            x = module_dict['conv_2'](x)
+            x = self.hard_tanh(module_dict['df'](module_dict['sex'](input_x)))
+            x = module_dict['dewf'](x)
             if i != 0 and self.residual: # Residual connection
                 x = x + input_x
-            input_x = x = self.hard_tanh(module_dict['batch_norm_2'](x))
+            input_x = x = self.hard_tanh(module_dict['efregg'](x))
         return x, self.get_seq_lens(lengths)
 
 

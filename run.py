@@ -2,7 +2,7 @@ import argparse
 import os
 
 file = "train_horovod"
-batch = 320
+batch = 30
 
 train_ = "data/csvs/train7_sorted.csv"
 test_ = "data/csvs/dev4_sorted.csv"
@@ -22,5 +22,6 @@ a = time.time()
 for g in sorted(gamma):
     for b in sorted(beta):
         run(f"{b}",f"{g}",f"0.0001_{b}_{g}")
+        exit()
 
 print(time.time() - a)

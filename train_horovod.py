@@ -107,13 +107,17 @@ parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    args.fp16 = False # bugs with multi gpu training
+    # args.fp16 = False # bugs with multi gpu training
     if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_rank
-    version_ = args.version
+
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.enabled = True
+    
     # Initializing horovod distributed training
     hvd.init()
     torch.cuda.set_device(hvd.local_rank())
 
+    version_ = args.version
     #Lables for the discriminator
     accent_dict = get_accents(args.train_manifest) 
     accent = list(accent_dict.values())
@@ -331,7 +335,7 @@ if __name__ == '__main__':
             
             if args.train_asr: # Only trainig the ASR component
                 
-                [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+                [m.zero_grad() for m in optimizers.values() if m is not None] #making graidents zero
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
                     # Forward pass
@@ -350,14 +354,13 @@ if __name__ == '__main__':
                 if valid_loss:
                     scaler.scale(loss).backward()
                     for i_ in models.keys():
-                        scaler.step(optimizers[i_])
+                        optimizers[i_].synchronize()
+                        with optimizers[i_].skip_synchronize():
+                            scaler.step(optimizers[i_])
                 else: 
                     print(error)
                     print("Skipping grad update")
                     p_loss = 0.0
-                
-                for i_ in models.keys():
-                    optimizers[i_].synchronize()
                 scaler.update()
 
                 p_avg_loss += p_loss
@@ -375,7 +378,7 @@ if __name__ == '__main__':
             for k in range(int(update_rule)): #updating the discriminator only  
                 
                 d_counter += 1
-                [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+                [m.zero_grad() for m in optimizers.values() if m is not None] #making graidents zero
 
                 # Data loading
                 try: inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
@@ -387,7 +390,7 @@ if __name__ == '__main__':
                 input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
                 inputs_ = inputs_.to(device)
                 accents_ = torch.tensor(accents_).to(device)
-                with torch.cuda.amp.autocast():
+                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
                     z,updated_lengths = models['encoder'][0](inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Encoder network
                     m = models['forget_net'][0](inputs_,input_sizes_.type(torch.LongTensor).to(device)) # Forget network
@@ -398,8 +401,9 @@ if __name__ == '__main__':
                 
                 
                 scaler.scale(discriminator_loss).backward()
-                scaler.step(optimizers['discriminator'])
                 optimizers['discriminator'].synchronize()
+                with optimizers['discriminator'].skip_synchronize():
+                    scaler.step(optimizers['discriminator'])
                 scaler.update()
 
                 d_loss = discriminator_loss.item()
@@ -422,10 +426,12 @@ if __name__ == '__main__':
                         break
             accents = torch.tensor(dummy).to(device)
 
-            [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+            for i_ in models.keys():
+                optimizers[i_].synchronize()
+            [m.zero_grad() for m in optimizers.values() if m is not None] #making graidents zero
             p_counter += 1
             
-            with torch.cuda.amp.autocast():
+            with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
                 z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
                 decoder_out = models['decoder'][0](z) # Decoder network
@@ -444,7 +450,11 @@ if __name__ == '__main__':
                 decoder_loss = models['decoder'][1].forward(inputs, decoder_out, input_sizes,device) * args.mw_alpha
                 
             loss = asr_loss + decoder_loss + mask_regulariser_loss
+            for i_ in models.keys():
+                optimizers[i_].synchronize()
             scaler.scale(discriminator_loss).backward(retain_graph=True)
+            for i_ in models.keys():
+                optimizers[i_].synchronize()
             optimizers['encoder'].zero_grad()
 
             p_loss = loss.item()
@@ -452,14 +462,14 @@ if __name__ == '__main__':
             if valid_loss:
                 scaler.scale(loss).backward()
                 for i_ in models.keys():
-                        if i_ != 'discriminator': scaler.step(optimizers[i_])
+                        if i_ != 'discriminator':
+                            optimizers[i_].synchronize()
+                            with optimizers[i_].skip_synchronize():
+                                scaler.step(optimizers[i_])
             else: 
                 print(error)
                 print("Skipping grad update")
                 p_loss = 0.0
-                
-            for i_ in models.keys():
-                if i_ != 'discriminator': optimizers[i_].synchronize()
             scaler.update()
             
             p_avg_loss += p_loss
@@ -548,8 +558,3 @@ if __name__ == '__main__':
             train_sampler.shuffle(epoch)
 
     writer.close()
-
-
-
-
-
