@@ -5,3 +5,5 @@ wget
 librosa
 tqdm
 matplotlib
+tensorboard
+pandas
