@@ -107,6 +107,7 @@ parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    args.fp16 = False # bugs with multi gpu training
     if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_rank
     version_ = args.version
     # Initializing horovod distributed training
