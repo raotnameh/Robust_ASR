@@ -13,12 +13,11 @@ from tqdm import tqdm
 import math
 from os import listdir
 import os
+import sys
 
 parser = argparse.ArgumentParser(description='Extract the embedding vectors')
-parser.add_argument('--path', help='path torch embedding vector experiment files')
-parser.add_argument('--path-aug', help='path torch embedding vectors experiments to be extracted')
+parser.add_argument('--path', help='path to torch embedding vector .pth file')
 parser.add_argument('--save', help='path to save the npy files')
-parser.add_argument('--batchsz', help='batch size')
 
 
 
@@ -86,36 +85,6 @@ def extract2(z, ml, batch_sz):
         i = i + 1
 
     return np.array(z_m), np.array(y)
-'''
-def extract1(z, ml):
-
-    y = []
-    i = 0
-    for _ in tqdm(z):
-
-        if i != 0:
-            z_temp = _[0].reshape(_[0].shape[0],-1).cpu()
-            dim_len = z_temp.shape[1]
-            
-            if dim_len > ml:
-                l = int(np.floor(dim_len/ml))
-                l_d = 0
-                for kk in range(l):
-                    z_m = np.concatenate([z_m,z_temp[:,l_d:l_d + ml]])
-                    l_d = l_d + ml
-                    y = y + _[1]
-            else:
-                z_m = np.concatenate([z_m,z_temp[:,:ml]])
-                y = y + _[1]
-        else:
-            z_temp = _[0].reshape(_[0].shape[0],-1).cpu()
-            z_m = z_temp[:,:ml]
-            y = y + _[1]
-        
-
-        i = i + 1
-
-    return z_m, np.array(y)'''
 
 def extract(z, ml):
     
@@ -152,24 +121,6 @@ def extract(z, ml):
     return z_m, np.array(y)
 
 
-def min_len(z):
-
-    y = []
-    i = 0
-    min_ = math.inf
-
-    for _ in tqdm(z):
-
-        if min_ > _[0].reshape(_[0].shape[0],-1).shape[1]:
-            min_ = _[0].reshape(_[0].shape[0],-1).shape[1]
-
-
-        y = y + _[1]
-
-        i = i + 1
-    
-    return min_
-
 def min_len1(z):
 
     length = []
@@ -187,35 +138,30 @@ def min_len1(z):
 if __name__ == '__main__':
     args = parser.parse_args()
     path = args.path
-    path_aug = args.path_aug
     save_path = args.save
-    bs = int(args.batchsz)
-    filenames = os.listdir(path)
 
-    for f in filenames:
+    try:
+        z_path = path + '/' + 'z.pth'
+        _z_path = path + '/' + 'z_.pth'
+        z1 = torch.load(z_path,map_location='cpu')
+        z_1 = torch.load(_z_path,map_location='cpu')
 
-        try:
-            for f_ in [path_aug]:
+        # get batch size
 
-                z_path = '/'+f_+'/z.pth'
-                _z_path = '/'+f_+'/z_.pth'
-                z1 = torch.load(path+f+z_path,map_location='cpu')
-                z_1 = torch.load(path+f+_z_path,map_location='cpu')
+        batch_size = z1[0][0].shape[0]
 
-                min_z = min_len1(z1)
-                min_z_ = min_len1(z_1)
+        min_z = min_len1(z1)
+        min_z_ = min_len1(z_1)
 
-                z, y = extract2(z1, min_z, bs)
-                z_, y_ = extract2(z_1, min_z_, bs)
-                np.save(save_path+f_+f+"feat_z.npy", z)
-                np.save(save_path+f_+f+"labels_z.npy", y)
+        z, y = extract2(z1, min_z, batch_size)
+        z_, y_ = extract2(z_1, min_z_, batch_size)
+        np.save(save_path+"/feat_z.npy", z)
+        np.save(save_path+"/labels_z.npy", y)
 
-                np.save(save_path+f_+f+"feat_z_.npy", z_)
-                np.save(save_path+f_+f+"labels_z_.npy", y_)
+        np.save(save_path+"/feat_z_.npy", z_)
+        np.save(save_path+"/labels_z_.npy", y_)
 
-                print("done " + f_ + "....")
-        except:
-            print("Something wrong with {}! I'm continuing!".format(f))
-            continue
+        print("Done!" )
+    except:
+        print("Something wrong! I'm continuing!")
         
-        print("done " + f + "...")
