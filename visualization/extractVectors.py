@@ -1,9 +1,3 @@
-# specify the number of cores to be used
-#import psutil
-#print(psutil.cpu_count())
-#p = psutil.Process()
-#p.cpu_affinity([0,1,2,3,4,5,6,7,8,9,10])
-
 import argparse
 import torch
 import numpy as np
