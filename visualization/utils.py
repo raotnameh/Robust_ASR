@@ -17,7 +17,17 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA, TruncatedSVD, KernelPCA, LatentDirichletAllocation
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 
-def p_plot(z, y, exp_name):
+def finalPlot(z, y, exp_name):
+
+    '''
+    This function plots the final embedding (z and z_tilde)
+
+    params:
+        input:
+            z: reduced embeddings
+            y: example class
+            exp_name: name of the experiment
+    '''
 
     principalComponents = print_pca(z, y)
     x_max, y_max = np.max(principalComponents[:,0]),np.max(principalComponents[:,1])
@@ -34,7 +44,17 @@ def p_plot(z, y, exp_name):
 
     plt.show()
 
-def print_pca(x, y):
+def getTranformedXY(x, y):
+
+    '''
+    This function extract 2-D embedding from the input n-D
+    dimensional embedding
+
+    params:
+        input:
+            x: n-D embeddings
+            y: example class
+    '''    
 
     scaler = StandardScaler()
     
@@ -54,7 +74,7 @@ def print_pca(x, y):
     return x
 
 
-def vis(path, file_name):
+def visualization(path, file_name):
 
     en_us_z_f = np.load(path+file_name+'feat_z.npy')
     en_us_z_y = np.load(path+file_name+'labels_z.npy')
@@ -72,10 +92,4 @@ def vis(path, file_name):
 
     p_plot(z_t,y_t, file_name+"z tilde")
 
-
-if __name__ = '__main__':
-    path = 'path to files'
-    files = 'files'
-
-    vis(path,files)
 
