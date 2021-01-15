@@ -3,13 +3,29 @@
 # with open('labels.json') as label_file:
 #     labels = str(''.join(json.load(label_file)))
 
-def config(labels=29, sub_blocks=5):
+def config(labels=29, sub_blocks=1):
     info = [
         {
             'sub_blocks': 1,
             'kernel_size': 11,
             'stride': 2,
-            'out_channels': 1024,
+            'out_channels': 64,
+            'dropout': 0.2,
+            'dilation': 1,
+        },
+        {
+            'sub_blocks': sub_blocks,
+            'kernel_size': 11,
+            'stride': 3,
+            'out_channels': 128,
+            'dropout': 0.2,
+            'dilation': 1,
+        },        
+        {
+            'sub_blocks': sub_blocks,
+            'kernel_size': 11,
+            'stride': 1,
+            'out_channels': 256,
             'dropout': 0.2,
             'dilation': 1,
         },
@@ -20,19 +36,36 @@ def config(labels=29, sub_blocks=5):
             'out_channels': 512,
             'dropout': 0.2,
             'dilation': 1,
+        },
+        {
+            'sub_blocks': sub_blocks,
+            'kernel_size': 11,
+            'stride': 1,
+            'out_channels': 1024,
+            'dropout': 0.2,
+            'dilation': 1,
         }
+
 
     ]
 
     return info
 
 
-def configD(labels=29, sub_blocks=5):
+def configD(labels=29, sub_blocks=1):
     info = [
         {
             'sub_blocks': 1,
             'kernel_size': 11,
             'stride': 2,
+            'out_channels': 1024,
+            'dropout': 0.2,
+            'dilation': 1
+        },
+        {
+            'sub_blocks': sub_blocks,
+            'kernel_size': 11,
+            'stride': 1,
             'out_channels': 512,
             'dropout': 0.2,
             'dilation': 1,
@@ -40,8 +73,16 @@ def configD(labels=29, sub_blocks=5):
         {
             'sub_blocks': sub_blocks,
             'kernel_size': 11,
+            'stride': 3,
+            'out_channels': 256,
+            'dropout': 0.2,
+            'dilation': 1,
+        },
+        {
+            'sub_blocks': sub_blocks,
+            'kernel_size': 11,
             'stride': 1,
-            'out_channels': 1024,
+            'out_channels': 1,
             'dropout': 0.2,
             'dilation': 1,
         }
