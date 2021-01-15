@@ -60,17 +60,22 @@ class block_B(nn.Module):
         self.layers_nonlinear = nn.ModuleList()
         for i in range(nonlinear):
             self.layers_nonlinear.append(
-            nn.Conv1d(out_channels, out_channels, kernel_size=1, stride=1, )
+                nn.Sequential(
+                    nn.Conv1d(out_channels, out_channels, kernel_size=1, stride=1,)
+                    nn.BatchNorm1d(out_channels),
+                    nn.LeakyReLU(0.2, inplace=True),
+                    nn.Dropout(p=dropout, inplace=True),
+                )
             )
 
     def forward(self, x, lengths):
         y = x # 32,1,148
         for i in range(len(self.layers)):
             y, lengths = self.maskconv1d(self.layers[i](y), lengths, self.stride)
-        if self.sub_blocks != 1: 
-            y, lengths = self.maskconv1d(self.last(y + self.conv(x)), lengths, self.stride)
         for i in range(len(self.layers_nonlinear)):
             y, lengths = self.maskconv1d(self.layers_nonlinear[i](y), lengths, stride=1)
+        if self.sub_blocks != 1: 
+            y, lengths = self.maskconv1d(self.last(y + self.conv(x)), lengths, self.stride)
         return y, lengths #lengths
 
     def maskconv1d(self,x,lengths, stride):
