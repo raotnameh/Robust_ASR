@@ -24,11 +24,8 @@ To run the benchmarks on your machine, run the following command-
 
 ## Plots
 
-<img src="plots/time_vs_epoch.png" width="800" height="800">
-![Time vs Epoch](plots/time_vs_epoch.png =100x60)
+<img src="plots/time_vs_epoch.png" width="800" height="700">
 
+<img src="plots/wer_vs_epoch.png" width="800" height="700">
 
-![WER vs Epoch](plots/wer_vs_epoch.png)
-
-
-![CER vs Epoch](plots/cer_vs_epoch.png)
+<img src="plots/cer_vs_epoch.png)" width="800" height="700">
