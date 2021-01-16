@@ -3,7 +3,7 @@
 
 To run the benchmarks on your machine, run the following command-
 
-`python summary_experiments.py --log-directory [/path/to/training/log/directories] --plot-directory [/path/to/save/plots]`
+`python summary_experiments.py --log-directory /path/to/training/log/directories --plot-directory /path/to/save/plots`
 
 
 ## Results
@@ -25,7 +25,7 @@ To run the benchmarks on your machine, run the following command-
 ## Plots
 
 
-![Time vs Epoch](plots/time_vs_epoch.png)
+![Time vs Epoch](plots/time_vs_epoch.png = 100*60)
 
 
 ![WER vs Epoch](plots/wer_vs_epoch.png)
