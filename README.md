@@ -71,8 +71,6 @@ Use `python train.py -h` for more parameters and options.
 2. On your local-machine execute port forwarding command: ssh -L YYYY:localhost:XXXX hemant@192.168.3.6 
 3. Open brower and hit: http://localhost:YYYY/
 
-
-
 ## Testing/Inference
 
 To evaluate a trained model on a test set (has to be in the same format as the training set):
@@ -80,6 +78,14 @@ To evaluate a trained model on a test set (has to be in the same format as the t
 ```
 python test.py --test-manifest data/csvs/dev_sorted_EN_US.csv --gpu-rank 3 --model-path /media/data_dump/hemant/janvijay/new_code/Robust_ASR/0.0001_0.2_0.01/models/ckpt_final.pth --f --d --cuda --batch-size 8 --save-output test_save --save-representation test_save
 ```
+
+Further, to employ a KenLM based LM for beam resoring:
+
+```
+python search_lm_params.py --model-path 0.0001_0.2_0.01/models/ckpt_final.pth --saved-output test_save/out.pth --output-path tune_results.json --lm-path lm/train7_sorted.binary --beam-width 128;
+python select_lm_params.py --input-path tune_results.json;
+```
+
 ### Using an ARPA LM
 
 We support using kenlm based LMs. To build your own LM you need to use the KenLM repo found [here](https://github.com/kpu/kenlm). Have a read of the documentation to get a sense of how to train your own LM. The above steps once trained can be used to find the appropriate parameters.
