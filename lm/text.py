@@ -18,7 +18,7 @@ def get_txt(i):
 with open(args.path ,"r") as f:
     out = f.readlines()
     
-txt = [i.split(',')[-1].strip() for i in out]
+txt = [i.split(',')[-2].strip() for i in out]
 
 
 def txt_save(dummy):
