@@ -78,7 +78,7 @@ Use `python train.py -h` for more parameters and options.
 To evaluate a trained model on a test set (has to be in the same format as the training set):
 
 ```
-python test.py --test-manifest data/csvs/dev_sorted.csv --gpu 0 --model-path /same/path/as/exp/name/argument/given --f --d --cuda --batch-size 64 --save-output /path/to/save/output/
+python test.py --test-manifest data/csvs/dev_sorted_EN_US.csv --gpu-rank 3 --model-path /media/data_dump/hemant/janvijay/new_code/Robust_ASR/0.0001_0.2_0.01/models/ckpt_final.pth --f --d --cuda --batch-size 8 --save-output test_save --save-representation test_save
 ```
 ### Using an ARPA LM
 
