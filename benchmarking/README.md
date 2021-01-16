@@ -1,4 +1,10 @@
 # Benchmarking
+## Running Benchmarks
+
+To run the benchmarks on your machine, run the following command-
+
+`python summary_experiments.py --log-directory [/path/to/training/log/directories] --plot-directory [/path/to/save/plots]`
+
 
 ## Results
 
