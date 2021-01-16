@@ -24,7 +24,7 @@ To run the benchmarks on your machine, run the following command-
 
 ## Plots
 
-<img src="plots/time_vs_epoch.png" width="500" height="800">
+<img src="plots/time_vs_epoch.png" width="800" height="800">
 ![Time vs Epoch](plots/time_vs_epoch.png =100x60)
 
 
