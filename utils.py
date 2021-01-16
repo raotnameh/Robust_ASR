@@ -40,8 +40,8 @@ def load_model_components(device, model_path, forget, discriminator):
     package = torch.load(model_path, map_location="cpu")
     models = package['models']
     encoder_model, asr_model = models['encoder'][0], models['predictor'][0]
-    forget_model = None if 'forget_net' not in models else models['forget_net'][0]
-    disc_model = None if 'discrimator' not in models else models['discrimator'][0]
+    forget_model = None if ('forget_net' not in models or not forget) else models['forget_net'][0]
+    disc_model = None if ('discriminator' not in models or not discriminator) else models['discriminator'][0]
 
     model_components = [encoder_model, forget_model, disc_model, asr_model]
     for i in range(len(model_components)):
@@ -49,8 +49,6 @@ def load_model_components(device, model_path, forget, discriminator):
             continue
         model_components[i].eval()
         model_components[i].to(device)
-        if use_half:
-            model_components[i] = model_components[i].half()
     return model_components, package['accent_dict'] # e, f, d, asr
 
 def load_model(device, model_path, use_half):

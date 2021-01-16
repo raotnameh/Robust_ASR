@@ -4,7 +4,7 @@ import torch
 from tqdm import tqdm
 import numpy as np
 
-from data.data_loader import SpectrogramDataset, AudioDataLoader
+from data.data_loader import SpectrogramDataset, AudioDataLoader, accent
 from decoder import GreedyDecoder
 from utils import load_model_components
 
@@ -15,7 +15,7 @@ parser.add_argument('--batch-size', default=20, type=int, help='Batch size for t
 parser.add_argument('--num-workers', default=32, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--save-representation', default=False, help="Saves outtput representations z, z_, and m")
 parser.add_argument('--save-output', default=False, help="Saves output of model from test to this file_path")
-parser.add_argument('--gpu-rank', dest='gpu', type=str, help='GPU to be used', required=True)
+parser.add_argument('--gpu-rank', dest='gpu_rank', type=str, help='GPU to be used', required=True)
 parser.add_argument('--cuda', action='store_true', default=False, help='whether to use cuda or not')
 # checkpoint loading args
 parser.add_argument('--model-path', dest='model_path', type=str, help='Path to "model" directory, where weights of component of models are saved', required=True)
@@ -26,27 +26,33 @@ parser.add_argument('--decoder', dest='decoder', default='greedy', help='type of
 
 # model compnents: e, f, d, asr
 def forward_call(model_components, inputs, inputs_sizes): 
-    z, updated_lengths = model_components[0](inputs, inputs_sizes)
+    # encoder pass.
+    z, updated_lengths = model_components[0](inputs, inputs_sizes) 
     a = z
-    if model_components[1] is not None: # forget net is present
+    # forget net forward pass.
+    if model_components[1] is not None: 
         m = model_components[1](inputs, inputs_sizes)
         z = z * m
-    else: m = None
+    else: 
+        m = None
+    # dicriminator net forward pass.
     disc_out = model_components[2](z) if model_components[2] is not None else None # discrmininator is present or not
+    # asr forward pass.
     asr_out, asr_out_sizes = model_components[3](z, updated_lengths)
     return asr_out, asr_out_sizes, disc_out, a, z, updated_lengths, m
 
 
-def evaluate(test_loader,accent_dict,device,model_components,target_decoder):
+def evaluate(test_loader, accent_dict, device, model_components, target_decoder):
     eps = 0.0000000001
-    accent = list(accent_dict.values())
+    accent = list(accent_dict.values()) # Corresponds to number of accents in training set. (num of output classes in discriminator)
     dict_z = []
     dict_z_ = []
     dict_m = []
-    output_data=[]
+    output_data = []
     with torch.no_grad():
         total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
         conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
+        acc_weights = np.ones((len(accent)))*eps
         tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
         length, num = eps, eps
         for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
@@ -61,11 +67,13 @@ def evaluate(test_loader,accent_dict,device,model_components,target_decoder):
             
             # Forward pass
             asr_out, asr_out_sizes, disc_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes.type(torch.LongTensor).to(device))
+            
             #saving z and z_
             if args.save_representation:
                 dict_z.append([z.cpu(),accents,updated_lengths]) 
                 dict_z_.append([z_.cpu(),accents,updated_lengths])
                 if m is not None: dict_m.append([m.cpu(),accents,updated_lengths])
+            
             # Predictor metric
             split_targets = []
             offset = 0
@@ -74,6 +82,7 @@ def evaluate(test_loader,accent_dict,device,model_components,target_decoder):
                 offset += size
             decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
             target_strings = target_decoder.convert_to_strings(split_targets)
+            
             if args.save_output is not None:
                 # add output to data array, and continue
                 output_data.append((asr_out.cpu(), asr_out_sizes.cpu(), target_strings))
@@ -94,6 +103,7 @@ def evaluate(test_loader,accent_dict,device,model_components,target_decoder):
                 # Discriminator metrics: fill in the confusion matrix.
                 out, predicted = torch.max(disc_out, 1)
                 for j in range(len(accents)):
+                    acc_weights[accents[j]] += 1
                     if accents[j] == predicted[j].item():
                         num = num + 1
                     conf_mat[accents[j], predicted[j].item()] += 1
@@ -109,21 +119,25 @@ def evaluate(test_loader,accent_dict,device,model_components,target_decoder):
         class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+tps)
         class_wise_f1 = 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
         macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
+        weighted_precision, weighted_recall = ((acc_weights / acc_weights.sum()) * class_wise_precision).sum(), ((acc_weights / acc_weights.sum()) * class_wise_recall).sum()
+        weighted_f1 = 2 * weighted_precision * weighted_recall / (weighted_precision + weighted_recall)
         micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
         micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
         print('Discriminator accuracy (micro) {acc: .3f}\t'
               'Discriminator precision (micro) {pre: .3f}\t'
               'Discriminator recall (micro) {rec: .3f}\t'
-              'Discriminator F1 (micro) {f1: .3f}\t'.format(acc_ = num/length *100 , acc=micro_accuracy, pre=micro_precision, rec=micro_recall, f1=micro_f1))
+              'Discriminator F1 (micro) {f1: .3f}\t'.format(acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
     
     print('Average WER {wer:.3f}\t'
           'Average CER {cer:.3f}\t'.format(wer=wer, cer=cer))
-    #saving
+
+    # saving
     if args.save_representation:
         torch.save(dict_z,f"{args.save_representation}/z.pth") 
         torch.save(dict_z_,f"{args.save_representation}/z_.pth")
         torch.save(dict_m,f"{args.save_representation}/m.pth")
-    if args.save_output: torch.save(output_data, f"{args.save_output}/out.pth")
+    if args.save_output: 
+        torch.save(output_data, f"{args.save_output}/out.pth")
 
 
 if __name__ == '__main__':
@@ -131,12 +145,14 @@ if __name__ == '__main__':
     torch.set_grad_enabled(False)
     device = torch.device(f"cuda:{args.gpu_rank}" if args.cuda else "cpu")
 
+    model_components, accent_dict = load_model_components(device, args.model_path, args.forget, args.discriminate)
+
     if args.forget:
         assert model_components[1] is not None, "forget net not found in checkpoint"
     if args.discriminate:
-        assert model_components[1] is not None, "discriminate net not found in checkpoint"
+        assert model_components[2] is not None, "discriminate net not found in checkpoint"
 
-    model_components, accent_dict = load_model_components(device, args.model_path, args.forget, args.discriminate)
+    print("Loaded models successfully...")
 
     #Loading the configuration apply to the audio and labels of asr
     audio_conf = model_components[3].audio_conf
