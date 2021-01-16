@@ -28,4 +28,4 @@ To run the benchmarks on your machine, run the following command-
 
 <img src="plots/wer_vs_epoch.png" width="800" height="700">
 
-<img src="plots/cer_vs_epoch.png)" width="800" height="700">
+<img src="plots/cer_vs_epoch.png" width="800" height="700">
