@@ -4,7 +4,7 @@
 
 ```
 docker build -t [name-docker-image]:[version-number] .
-docker run -ti --gpus all -v [source to cv-1 in host]:[source to cv-1 in host] --tmpfs /tmp --entrypoint=/bin/bash [name-docker-image]:[version-number]
+docker run -ti --gpus all -v /path/to/data/in/host:/path/to/data/in/host --tmpfs /tmp --entrypoint=/bin/bash [name-docker-image]:[version-number]
 ```
 
 ## Building it from Source
