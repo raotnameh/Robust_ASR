@@ -1,5 +1,12 @@
 <sub> **Implentation of the [De-STT: De-entaglement of unwanted Nuisances and Biases in Speech to Text System using Adversarial Forgetting paper](https://arxiv.org/abs/2011.12979).**</sub> <br/>
 
+## Building from Docker
+
+```
+docker build -t [name-docker-image]:[version-number] .
+docker run -ti --gpus all -v [source to cv-1 in host]:[source to cv-1 in host] --tmpfs /tmp --entrypoint=/bin/bash [name-docker-image]:[version-number]
+```
+
 ## Building it from Source
 Install [PyTorch](https://github.com/pytorch/pytorch#installation) if you haven't already.
 
