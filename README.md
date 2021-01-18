@@ -2,6 +2,8 @@
 
 ## Building from Docker
 
+Before building, make sure that you have [nvidia-docker](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/user-guide.html) installed.
+
 ```
 docker build -t [name-docker-image]:[version-number] .
 docker run -ti --gpus all -v /path/to/data/in/host:/path/to/data/in/host --tmpfs /tmp --entrypoint=/bin/bash [name-docker-image]:[version-number]
