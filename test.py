@@ -7,8 +7,10 @@ import numpy as np
 from data.data_loader import SpectrogramDataset, AudioDataLoader, accent
 from decoder import GreedyDecoder
 from utils import load_model_components
+from opts import add_decoder_args, add_inference_args
 
 parser = argparse.ArgumentParser(description='DeepSpeech transcription')
+parser = add_decoder_args(parser)
 parser.add_argument('--test-manifest', metavar='DIR',
                     help='path to validation manifest csv', default='data/test_manifest.csv')
 parser.add_argument('--batch-size', default=20, type=int, help='Batch size for testing')
@@ -42,7 +44,7 @@ def forward_call(model_components, inputs, inputs_sizes):
     return asr_out, asr_out_sizes, disc_out, a, z, updated_lengths, m
 
 
-def evaluate(test_loader, accent_dict, device, model_components, target_decoder):
+def evaluate(test_loader, accent_dict, device, model_components, target_decoder, decoder):
     eps = 0.0000000001
     accent = list(accent_dict.values()) # Corresponds to number of accents in training set. (num of output classes in discriminator)
     dict_z = []
@@ -81,7 +83,7 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder)
                 split_targets.append(targets[offset:offset + size])
                 offset += size
             decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
-            target_strings = target_decoder.convert_to_strings(split_targets)
+            target_strings = decoder.convert_to_strings(split_targets)
             
             if args.save_output is not None:
                 # add output to data array, and continue
@@ -158,6 +160,7 @@ if __name__ == '__main__':
     audio_conf = model_components[3].audio_conf
     labels = model_components[3].labels
 
+    base_decoder = GreedyDecoder(labels, blank_index=labels.index('_'))
     if args.decoder == "beam":
         from decoder import BeamCTCDecoder
 
@@ -169,10 +172,8 @@ if __name__ == '__main__':
                                  cutoff_prob=args.cutoff_prob,
                                  beam_width=args.beam_width,
                                  num_processes=args.lm_workers)
-    elif args.decoder == "greedy":
-        decoder = GreedyDecoder(labels, blank_index=labels.index('_'))
     else:
-        decoder = None
+        decoder = GreedyDecoder(labels, blank_index=labels.index('_'))
     
     test_dataset = SpectrogramDataset(audio_conf=audio_conf,
                                       manifest_filepath=args.test_manifest,
@@ -186,4 +187,5 @@ if __name__ == '__main__':
                                      accent_dict = accent_dict,
                                      device=device,
                                      model_components=model_components,
-                                     target_decoder=decoder,)
+                                     target_decoder=decoder,
+                                     decoder = base_decoder)
