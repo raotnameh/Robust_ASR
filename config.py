@@ -3,81 +3,70 @@
 # with open('labels.json') as label_file:
 #     labels = str(''.join(json.load(label_file)))
 
-def config(labels=29, sub_blocks=5):
-    info = [
-        {
-            'sub_blocks': 1,
-            'kernel_size': 11,
-            'stride': 2,
-            'out_channels': 256,
-            'dropout': 0.2,
-            'dilation': 1,
-        },
-        {
-            'sub_blocks': sub_blocks,
-            'kernel_size': 11,
-            'stride': 1,
-            'out_channels': 256,
-            'dropout': 0.2,
-            'dilation': 1,
-        },
-        {
-            'sub_blocks': sub_blocks,
-            'kernel_size': 13,
-            'stride': 1,
-            'out_channels': 384,
-            'dropout': 0.2,
-            'dilation': 1,
-        },
-        {
-            'sub_blocks': sub_blocks,
-            'kernel_size': 17,
-            'stride': 1,
-            'out_channels': 512,
-            'dropout': 0.2,
-            'dilation': 1,
-        },
-        {
-            'sub_blocks': sub_blocks,
-            'kernel_size': 21,
-            'stride': 1,
-            'out_channels': 640,
-            'dropout': 0.3,
-            'dilation': 1,
-        },
-        {
-            'sub_blocks': sub_blocks,
-            'kernel_size': 25,
-            'stride': 1,
-            'out_channels': 768,
-            'dropout': 0.3,
-            'dilation': 1,
-        },
-        {
-            'sub_blocks': 1,
-            'kernel_size': 29,
-            'stride': 1,
-            'out_channels': 896,
-            'dropout': 0.4,
-            'dilation': 2,
-        },
-        {
-            'sub_blocks': 1,
-            'kernel_size': 1,
-            'stride': 1,
-            'out_channels': 1024,
-            'dropout': 0.4,
-            'dilation': 1,
-        },
-        {
-            'sub_blocks': 1,
-            'kernel_size': 1,
-            'stride': 1,
-            'out_channels': len(labels),
-            'dropout': 0.4,
-            'dilation': 1,
-        }
 
-    ]
+def prepare_info(layers):
+    hyperparameters = ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation']
+    info = []
+
+    for l in layers:
+        dummy = {}
+        for r,hyper in enumerate(hyperparameters): 
+            dummy[hyper] = l[r]
+        info.append(dummy)
 
     return info
+
+def configE():
+    layers = [
+        # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation']
+        [1,11,2,256,0.2,1],
+        [1,11,2,512,0.2,1],
+        [10,11,1,512,0.3,1],
+        [10,11,1,738,0.3,1],
+    ]
+
+    return prepare_info(layers)
+
+def configF():
+    layers = [
+        # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation']
+        [1,11,2,256,0.2,1],
+        [1,11,2,512,0.2,1],
+        [20,11,1,512,0.3,1],
+        [1,11,1,738*1,0.3,1],
+    ]
+
+    return prepare_info(layers)
+
+def configR():
+    layers = [
+        # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation']
+        [1,11,2,738,0.2,1],
+        [5,11,1,512,0.3,1],
+        [1,11,2,256,0.2,1],
+        [1,11,1,1,0.0,1],
+    ]
+
+    return prepare_info(layers)
+
+def configD(out=2):
+    layers = [
+        # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation']
+        [5,11,1,738,0.4,1],
+        [1,1,1,738,0.4,2],
+        [2,1,1,1024,0.4,1],
+        [1,11,1,out,0.0,1],
+    ]
+
+    return prepare_info(layers)
+
+def configP(labels=29):
+    layers = [
+        # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation']
+        [10,11,1,738,0.4,1],
+        [1,1,1,738,0.4,2],
+        [1,1,1,1024,0.4,1],
+        [1,1,1,labels,0.0,1],
+    ]
+
+    return prepare_info(layers)
