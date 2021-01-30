@@ -33,6 +33,15 @@ class block_B(nn.Module):
                             nn.Dropout(p=dropout, inplace=True),
                                 )
                     )
+                    for i in range(nonlinear):
+                        self.layers.append(
+                            nn.Sequential(
+                                nn.Conv1d(out_channels, out_channels, kernel_size=1, stride=1,),
+                                nn.BatchNorm1d(out_channels),
+                                nn.LeakyReLU(0.2, inplace=True),
+                                nn.Dropout(p=dropout, inplace=True),
+                            )
+                        )
                 else: 
                     self.layers.append(
                         nn.Sequential(
@@ -42,6 +51,15 @@ class block_B(nn.Module):
                             nn.Dropout(p=dropout, inplace=True),
                                 )
                     )
+                    for i in range(nonlinear):
+                        self.layers.append(
+                            nn.Sequential(
+                                nn.Conv1d(out_channels, out_channels, kernel_size=1, stride=1,),
+                                nn.BatchNorm1d(out_channels),
+                                nn.LeakyReLU(0.2, inplace=True),
+                                nn.Dropout(p=dropout, inplace=True),
+                            )
+                        )
             self.layers.append(
                 nn.Sequential(
                     nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation),
@@ -57,23 +75,11 @@ class block_B(nn.Module):
                 nn.Dropout(p=dropout, inplace=True),
                 )
         
-        self.layers_nonlinear = nn.ModuleList()
-        for i in range(nonlinear):
-            self.layers_nonlinear.append(
-                nn.Sequential(
-                    nn.Conv1d(out_channels, out_channels, kernel_size=1, stride=1,),
-                    nn.BatchNorm1d(out_channels),
-                    nn.LeakyReLU(0.2, inplace=True),
-                    nn.Dropout(p=dropout, inplace=True),
-                )
-            )
 
     def forward(self, x, lengths):
         y = x # 32,1,148
         for i in range(len(self.layers)):
             y, lengths = self.maskconv1d(self.layers[i](y), lengths, self.stride)
-        for i in range(len(self.layers_nonlinear)):
-            y, lengths = self.maskconv1d(self.layers_nonlinear[i](y), lengths, stride=1)
         if self.sub_blocks != 1: 
             y, lengths = self.maskconv1d(self.last(y + self.conv(x)), lengths, self.stride)
         return y, lengths #lengths
@@ -167,7 +173,7 @@ class Encoder(nn.Module):
         for i in range(len(info)):
             self.layers.append(
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
-                    stride=info[i]['stride'], in_channels=in_channels, nonlinear=0,
+                    stride=info[i]['stride'], in_channels=in_channels, nonlinear=info[i]['nonlinear'],
                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],
                     )
             )
@@ -189,7 +195,7 @@ class Decoder(nn.Module):
         for i in range(len(info)):
             self.layers.append(
                 block_Deco(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
-                    stride=info[i]['stride'], in_channels=in_channels, nonlinear=0,
+                    stride=info[i]['stride'], in_channels=in_channels,
                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],
                     )
             )
@@ -224,30 +230,30 @@ if __name__ == '__main__':
     
     encoder = Encoder(1,configE()).to(device)
     # print(encoder)
-    print(f"Number of parameters for in Million is: {get_param_size(encoder)/1000000}")
+    print(f"Number of parameters in encoder Million is: {get_param_size(encoder)/1000000}")
 
     forget_net = Encoder(1,configF()).to(device)
     # print(forget_net)
-    print(f"Number of parameters for in Million is: {get_param_size(forget_net)/1000000}")
+    print(f"Number of parameters in forget net is: {get_param_size(forget_net)/1000000}")
 
     decoder = Decoder(configE()[-1]['out_channels'],configR()).to(device)
     # print(decoder)
-    print(f"Number of parameters for in Million is: {get_param_size(decoder)/1000000}")
+    print(f"Number of parameters in decoder is: {get_param_size(decoder)/1000000}")
 
     discriminator = Encoder(configE()[-1]['out_channels'],configD()).to(device)
     # print(discriminator)
-    print(f"Number of parameters for in Million is: {get_param_size(discriminator)/1000000}")
+    print(f"Number of parameters in discriminator is: {get_param_size(discriminator)/1000000}")
 
     asr = Encoder(configE()[-1]['out_channels'],configP()).to(device)
     # print(asr)
-    print(f"Number of parameters for in Million is: {get_param_size(asr)/1000000}")
+    print(f"Number of parameters in asr is: {get_param_size(asr)/1000000}")
 
     # exit()
+    # for 15 second audios a batch size of 14 works
     B_SZ = 16
 
-
-    X = torch.rand((B_SZ, 1, 80)).to(device)
-    WIDTHS = torch.LongTensor(B_SZ).random_(40,80 ).to(device)
+    X = torch.rand((B_SZ, 1, 1500)).to(device)
+    WIDTHS = torch.LongTensor(B_SZ).random_(1,1500 ).to(device)
     Z, L = encoder(X, lengths=WIDTHS)    
     print("ENCODER OUT", Z.shape)
     M, L_ = forget_net(X, lengths=WIDTHS)    
