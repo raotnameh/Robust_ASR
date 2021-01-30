@@ -1,7 +1,6 @@
 import torch
 import torch.distributed as dist
 import pandas as pd
-from model import DeepSpeech
 
 import os
 

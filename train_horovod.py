@@ -11,12 +11,13 @@ import numpy as np
 from warpctc_pytorch import CTCLoss
 from collections import OrderedDict
 import pandas as pd
+from config import *
 
 import horovod.torch as hvd
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from data.data_loader import get_accents
 from decoder import GreedyDecoder
-from model import DeepSpeech, supported_rnns, ForgetNet, Encoder, Decoder, DiscimnateNet
+from model import *
 
 from utils import reduce_tensor, check_loss, Decoder_loss, validation, weights_
 
@@ -202,35 +203,35 @@ if __name__ == '__main__':
                             noise_prob=args.noise_prob,
                             noise_levels=(args.noise_min, args.noise_max))
     
-        rnn_type = args.rnn_type.lower()
-        assert rnn_type in supported_rnns, "rnn_type should be either lstm, rnn or gru"
-
         models = {} # All the models with their loss and optimizer are saved in this dict
+        
+        # Preprocessing
+        pre = Encoder(161,configPre())
+        pre_optimizer = torch.optim.Adam(pre.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        models['pre'] = [pre, None, pre_optimizer]
+
         # ASR
-        asr = DeepSpeech(rnn_hidden_size=args.hidden_size,
-                            nb_layers=args.hidden_layers,
-                            labels=labels,
-                            rnn_type=supported_rnns[rnn_type],
-                            audio_conf=audio_conf,
-                            bidirectional=args.bidirectional)
+        asr = Encoder(configE()[-1]['out_channels'],configP())
         asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         criterion = CTCLoss()
         models['predictor'] = [asr, criterion, asr_optimizer]
+
         # Encoder and Decoder
-        encoder = Encoder(num_modules = args.enco_modules, residual_bool = args.enco_res)
+        encoder = Encoder(configPre()[-1]['out_channels'],configE())
         e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        decoder = Decoder()
+        decoder =  Decoder(configE()[-1]['out_channels'],configR())
         d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
         dec_loss = Decoder_loss(nn.MSELoss())
         models['encoder'], models['decoder'] = [encoder, None, e_optimizer], [decoder, dec_loss, d_optimizer]
+
         # Forget Network
         if not args.train_asr:
-            fnet = ForgetNet(num_modules = args.forg_modules, residual_bool = args.forg_res, hard_mask_bool = True)
+            fnet = Encoder(configPre()[-1]['out_channels'],configF())
             fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
         # Discriminator
         if not args.train_asr:
-            discriminator = DiscimnateNet(classes=len(accent),num_modules=args.disc_modules,residual_bool=args.disc_res)
+            discriminator = Encoder(configE()[-1]['out_channels'],configD(), classes=len(accent), adaptive_pooling=True)
             discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             # Weighted loss depending on the class count
             disc_loss_weights = weights_(args, eps, accent, accent_dict)     
@@ -302,7 +303,7 @@ if __name__ == '__main__':
 
     # Printing the parameters of all the different modules 
     if hvd.rank() == 0: 
-        if not args.silent: [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
+        if not args.silent: [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
 
     # HVD multi gpu training
     for i in models.keys():
@@ -339,14 +340,16 @@ if __name__ == '__main__':
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
                     # Forward pass
-                    z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+                    # print(inputs.squeeze().shape)
+                    x_, updated_lengths = models['pre'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+                    z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
                     decoder_out = models['decoder'][0](z) # Decoder network
                     asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths.cpu()) # Predictor network
                     # Loss                
                     asr_out = asr_out.transpose(0, 1)  # TxNxH
                     asr_loss = models['predictor'][1](asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
                     asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                    decoder_loss = models['decoder'][1].forward(inputs, decoder_out, input_sizes,device) * args.mw_alpha
+                    decoder_loss = models['decoder'][1].forward(inputs, decoder_out.unsqueeze(1), input_sizes,device) * args.mw_alpha
                     loss = asr_loss + decoder_loss
 
                 p_loss = loss.item()
