@@ -184,7 +184,7 @@ class DeepSpeech(nn.Module):
 
         #print(x.shape)
         x = self.fc(x)
-        #print(x.shape)
+        # print(x.shape)
         #exit()
         x = x.transpose(0, 1)
         # identity in training mode, softmax in eval mode

@@ -94,11 +94,14 @@ def weights_(args, eps, accent, accent_dict):
     return disc_loss_weights
 
 def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001):
+    [i[0].eval() for i in models.values()]
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
     acc_weights = np.ones((len(accent)))*eps
     length, num = eps, eps
     #Decoder used for evaluation
+    p_loss = 0
+    p_counter = 0
     target_decoder = GreedyDecoder(labels)
     for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
         if args.dummy and i%2 == 1: break
@@ -110,15 +113,27 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
         
         # Forward pass
         if not args.train_asr:
-            z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
+            z,updated_lengths = models['encoder'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device)) # Encoder network
             m = models['forget_net'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
             z_ = z * m # Forget Operation
             discriminator_out = models['discriminator'][0](z_) # Discriminator network
             asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
         else:
-            z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-            decoder_out = models['decoder'][0](z) # Decoder network
-            asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
+            x_, updated_lengths = models['pre'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+            z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
+            #decoder_out = models['decoder'][0](z) # Decoder network
+            asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths.cpu()) # Predictor network
+
+            # print(asr_out.shape)
+            # exit()
+            asr_loss = models['predictor'][1](asr_out.transpose(0, 1).float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
+            asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
+            p_loss += asr_loss.item()
+            p_counter += 1
+
+        
+        # print(asr_out.shape)
+        # exit()
 
         # Predictor metric
         split_targets = []
@@ -126,11 +141,13 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
         for size in target_sizes:
             split_targets.append(targets[offset:offset + size])
             offset += size
+        
         decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
         target_strings = target_decoder.convert_to_strings(split_targets)
 
         for x in range(len(target_strings)):
             transcript, reference = decoded_output[x][0], target_strings[x][0]
+            # print(transcript, reference)
             wer_inst = target_decoder.wer(transcript, reference)
             cer_inst = target_decoder.cer(transcript, reference)
             total_wer += wer_inst
@@ -166,8 +183,8 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
         micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
         micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
 
-        # TODO
+        # # TODO
         # if state == 'test':
         #     return wer, cer, num, length,  weighted_precision, weighted_recal, weighted_f1
-
+    print(p_loss/p_counter)
     return wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy

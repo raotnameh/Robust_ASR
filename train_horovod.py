@@ -211,7 +211,8 @@ if __name__ == '__main__':
         models['pre'] = [pre, None, pre_optimizer]
 
         # ASR
-        asr = Encoder(configE()[-1]['out_channels'],configP())
+        print(len(labels))
+        asr = Encoder(configE()[-1]['out_channels'],configP(labels=len(labels)),transpose=True,softmax=True)
         asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         criterion = CTCLoss()
         models['predictor'] = [asr, criterion, asr_optimizer]
@@ -219,10 +220,11 @@ if __name__ == '__main__':
         # Encoder and Decoder
         encoder = Encoder(configPre()[-1]['out_channels'],configE())
         e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        decoder =  Decoder(configE()[-1]['out_channels'],configR())
-        d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        dec_loss = Decoder_loss(nn.MSELoss())
-        models['encoder'], models['decoder'] = [encoder, None, e_optimizer], [decoder, dec_loss, d_optimizer]
+        # decoder =  Decoder(configE()[-1]['out_channels'],configR())
+        # d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        # dec_loss = Decoder_loss(nn.MSELoss())
+        # models['encoder'], models['decoder'] = [encoder, None, e_optimizer], [decoder, dec_loss, d_optimizer]
+        models['encoder'] = [encoder, None, e_optimizer]
 
         # Forget Network
         if not args.train_asr:
@@ -270,7 +272,7 @@ if __name__ == '__main__':
                                    num_workers=args.num_workers, batch_sampler=train_sampler,pin_memory=True)
     disc_train_loader = AudioDataLoader(disc_train_dataset,
                                    num_workers=args.num_workers, batch_sampler=disc_train_sampler,pin_memory=True)    
-    test_loader = AudioDataLoader(test_dataset, batch_size=int(1.5*args.batch_size),
+    test_loader = AudioDataLoader(test_dataset, batch_size=int(2*args.batch_size),
                                   num_workers=args.num_workers,pin_memory=True)
     
     disc_train_sampler.shuffle(start_epoch)
@@ -343,29 +345,38 @@ if __name__ == '__main__':
                     # print(inputs.squeeze().shape)
                     x_, updated_lengths = models['pre'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
                     z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-                    decoder_out = models['decoder'][0](z) # Decoder network
+                    #decoder_out = models['decoder'][0](z) # Decoder network
                     asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths.cpu()) # Predictor network
+                    # print(asr_out.shape)
                     # Loss                
                     asr_out = asr_out.transpose(0, 1)  # TxNxH
+                    # print(asr_out.shape)
+                    # exit()
                     asr_loss = models['predictor'][1](asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
                     asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                    decoder_loss = models['decoder'][1].forward(inputs, decoder_out.unsqueeze(1), input_sizes,device) * args.mw_alpha
-                    loss = asr_loss + decoder_loss
+                    #decoder_loss = models['decoder'][1].forward(inputs, decoder_out.unsqueeze(1), input_sizes,device) * args.mw_alpha
+                    loss = asr_loss #+ decoder_loss
 
                 p_loss = loss.item()
+                if p_loss > 400: 
+                    print("Loss too big clipping it to 400")
+                    p_loss = 0.0
+
                 valid_loss, error = check_loss(loss, p_loss)
                 if valid_loss:
                     scaler.scale(loss).backward()
                     for i_ in models.keys():
+                        torch.nn.utils.clip_grad_norm_(models[i_][0].parameters(), 400)
                         optimizers[i_].synchronize()
                         with optimizers[i_].skip_synchronize():
                             scaler.step(optimizers[i_])
+                    scaler.update()
                 else: 
                     print(error)
                     print("Skipping grad update")
                     p_loss = 0.0
-                scaler.update()
-
+                
+                    
                 p_avg_loss += p_loss
                 if hvd.rank() == 0:
                     # Logging to tensorboard and train.log.
@@ -373,7 +384,7 @@ if __name__ == '__main__':
                     writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                     if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
-
+            
             if args.num_epochs > epoch: prob -= diff
             else: prob = prob_ 
             update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
@@ -494,6 +505,15 @@ if __name__ == '__main__':
               'Time taken (s): {1}\t'
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
 
+        # anneal lr
+        for i in scheduler:
+            i.step()
+
+        if not args.no_shuffle:
+            print("Shuffling batches...")
+            train_sampler.shuffle(epoch)
+
+        continue
         if hvd.rank() == 0:
             with torch.no_grad():
                 wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)

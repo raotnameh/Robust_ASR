@@ -12,16 +12,14 @@ class block_B(nn.Module):
         self.padding = (kernel_size // 2) * dilation
         self.sub_blocks = sub_blocks
 
-        
-
         self.layers = nn.ModuleList()
         if sub_blocks == 1:
             self.layers.append(
                 nn.Sequential(
                     nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation),
                     nn.BatchNorm1d(out_channels),
-                    nn.LeakyReLU(0.2, inplace=False),
-                    nn.Dropout(p=dropout, inplace=True),
+                    nn.ReLU(),
+                    nn.Dropout(p=dropout),
                         )
             )
         else:
@@ -31,8 +29,8 @@ class block_B(nn.Module):
                         nn.Sequential(
                             nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation),
                             nn.BatchNorm1d(out_channels),
-                            nn.LeakyReLU(0.2, inplace=False),
-                            nn.Dropout(p=dropout, inplace=True),
+                            nn.ReLU(),
+                            nn.Dropout(p=dropout),
                                 )
                     )
                     for i in range(nonlinear):
@@ -40,8 +38,8 @@ class block_B(nn.Module):
                             nn.Sequential(
                                 nn.Conv1d(out_channels, out_channels, kernel_size=1, stride=1,),
                                 nn.BatchNorm1d(out_channels),
-                                nn.LeakyReLU(0.2, inplace=False),
-                                nn.Dropout(p=dropout, inplace=True),
+                                nn.ReLU(),
+                                nn.Dropout(p=dropout),
                             )
                         )
                 else: 
@@ -49,8 +47,8 @@ class block_B(nn.Module):
                         nn.Sequential(
                             nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation),
                             nn.BatchNorm1d(out_channels),
-                            nn.LeakyReLU(0.2, inplace=False),
-                            nn.Dropout(p=dropout, inplace=True),
+                            nn.ReLU(),
+                            nn.Dropout(p=dropout),
                                 )
                     )
                     for i in range(nonlinear):
@@ -58,8 +56,8 @@ class block_B(nn.Module):
                             nn.Sequential(
                                 nn.Conv1d(out_channels, out_channels, kernel_size=1, stride=1,),
                                 nn.BatchNorm1d(out_channels),
-                                nn.LeakyReLU(0.2, inplace=False),
-                                nn.Dropout(p=dropout, inplace=True),
+                                nn.ReLU(),
+                                nn.Dropout(p=dropout),
                             )
                         )
             self.layers.append(
@@ -73,8 +71,8 @@ class block_B(nn.Module):
                 nn.BatchNorm1d(out_channels),
                 )
             self.last = nn.Sequential(
-                nn.LeakyReLU(0.2, inplace=False),
-                nn.Dropout(p=dropout, inplace=True),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
                 )
         
 
@@ -118,8 +116,8 @@ class block_Deco(nn.Module):
                 nn.Sequential(
                     nn.ConvTranspose1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, output_padding=output_padding),
                     nn.BatchNorm1d(out_channels),
-                    nn.LeakyReLU(0.2, inplace=False),
-                    nn.Dropout(p=dropout, inplace=True),
+                    nn.ReLU(),
+                    nn.Dropout(p=dropout),
                         )
             )
         else:
@@ -129,8 +127,8 @@ class block_Deco(nn.Module):
                         nn.Sequential(
                             nn.ConvTranspose1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, output_padding=output_padding),
                             nn.BatchNorm1d(out_channels),
-                            nn.LeakyReLU(0.2, inplace=False),
-                            nn.Dropout(p=dropout, inplace=True),
+                            nn.ReLU(),
+                            nn.Dropout(p=dropout),
                                 )
                     )
                 else: 
@@ -138,8 +136,8 @@ class block_Deco(nn.Module):
                         nn.Sequential(
                             nn.ConvTranspose1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, output_padding=output_padding),
                             nn.BatchNorm1d(out_channels),
-                            nn.LeakyReLU(0.2, inplace=False),
-                            nn.Dropout(p=dropout, inplace=True),
+                            nn.ReLU(),
+                            nn.Dropout(p=dropout),
                                 )
                     )
             self.layers.append(
@@ -153,8 +151,8 @@ class block_Deco(nn.Module):
                 nn.BatchNorm1d(out_channels),
                 )
             self.last = nn.Sequential(
-                nn.LeakyReLU(0.2, inplace=False),
-                nn.Dropout(p=dropout, inplace=True),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
                 )
 
     def forward(self, x):
@@ -166,16 +164,26 @@ class block_Deco(nn.Module):
         return y 
 
 
+class InferenceBatchSoftmax(nn.Module):
+    def forward(self, input_):
+        if not self.training:
+            return F.softmax(input_, dim=-1)
+        else:
+            return input_
 
 class Encoder(nn.Module):
-    def __init__(self,in_channels,info, classes = 2, adaptive_pooling=False):
+    def __init__(self,in_channels,info, classes = 2, adaptive_pooling=False,transpose=False,softmax=False):
         super(Encoder, self).__init__()
 
         self.pooling = adaptive_pooling
+        self.softmax = softmax
+        self.transpose = transpose
         if self.pooling: 
             self.adaptive_pooling = nn.AdaptiveAvgPool1d((2))
             self.linear_1 = torch.nn.Linear(info[-1]['out_channels']*2, classes)
             self.sigmoid = nn.Sigmoid()
+        
+        self.inference_softmax = InferenceBatchSoftmax()
 
         self.layers = nn.ModuleList()
         for i in range(len(info)):
@@ -187,15 +195,18 @@ class Encoder(nn.Module):
             )
             in_channels = info[i]['out_channels']
         
-    def forward(self, x, lengths,):
+    def forward(self, x, lengths):
         for i in range(len(self.layers)):
             # print(i, "-------",x.shape)
             x, lengths = self.layers[i](x, lengths,)
         if self.pooling: 
             x = self.adaptive_pooling(x)
-            print(x.shape)
             x = self.sigmoid(self.linear_1(torch.flatten(x, start_dim=1)))
-            return x, lengths
+        if self.transpose: x = x.permute(0,2,1)
+        if self.softmax: x = self.inference_softmax(x)
+        #     if transpose: return x.transpose(0,1), lengths
+        #     return x, lengths
+        # if transpose: return x.transpose(0,1), lengths
         return x, lengths
 
 
@@ -234,7 +245,7 @@ if __name__ == '__main__':
     
     import json
 
-    device = torch.device("cuda:0")
+    device = torch.device("cuda:1")
     with open('labels.json') as label_file:
         labels = str(''.join(json.load(label_file)))
     from config import *
@@ -247,19 +258,19 @@ if __name__ == '__main__':
     # print(encoder)
     print(f"Number of parameters in encoder is: {get_param_size(encoder)/1000000}")
 
-    forget_net = Encoder(configPre()[-1]['out_channels'],configF()).to(device)
-    # print(forget_net)
-    print(f"Number of parameters in forget net is: {get_param_size(forget_net)/1000000}")
+    # forget_net = Encoder(configPre()[-1]['out_channels'],configF()).to(device)
+    # # print(forget_net)
+    # print(f"Number of parameters in forget net is: {get_param_size(forget_net)/1000000}")
 
-    decoder = Decoder(configE()[-1]['out_channels'],configR()).to(device)
-    # print(decoder)
-    print(f"Number of parameters in decoder is: {get_param_size(decoder)/1000000}")
+    # decoder = Decoder(configE()[-1]['out_channels'],configR()).to(device)
+    # # print(decoder)
+    # print(f"Number of parameters in decoder is: {get_param_size(decoder)/1000000}")
 
-    discriminator = Encoder(configE()[-1]['out_channels'],configD(), adaptive_pooling=True).to(device)
-    # print(discriminator)
-    print(f"Number of parameters in discriminator is: {get_param_size(discriminator)/1000000}")
+    # discriminator = Encoder(configE()[-1]['out_channels'],configD(), adaptive_pooling=True).to(device)
+    # # print(discriminator)
+    # print(f"Number of parameters in discriminator is: {get_param_size(discriminator)/1000000}")
 
-    asr = Encoder(configE()[-1]['out_channels'],configP()).to(device)
+    asr = Encoder(configE()[-1]['out_channels'],configP(),transpose=True).to(device)
     # print(asr)
     print(f"Number of parameters in asr is: {get_param_size(asr)/1000000}")
 
@@ -274,21 +285,21 @@ if __name__ == '__main__':
     print("PRE OUT", Z1.shape)  
     Z, L = encoder(Z1, lengths=L)    
     print("ENCODER OUT", Z.shape)
-    M, L_ = forget_net(Z1, lengths=WIDTHS)    
-    print("FORGET-NET OUT", M.shape)
+    # M, L_ = forget_net(Z1, lengths=WIDTHS)    
+    # print("FORGET-NET OUT", M.shape)
     
-    Z_ = Z * M
+    # Z_ = Z * M
 
-    D, _ = discriminator(Z_, lengths=WIDTHS)    
+    # D, _ = discriminator(Z_, lengths=WIDTHS)    
     
-    print("DISCRIMINATOR OUT", D.shape)
+    # print("DISCRIMINATOR OUT", D.shape)
     
-    print(Z_.shape)
-    R = decoder(Z_)
-    print("DECODER OUT", R.shape)
+    # print(Z_.shape)
+    # R = decoder(Z_)
+    # print("DECODER OUT", R.shape)
 
 
 
-    P, L_ = asr(Z_, lengths=WIDTHS)    
+    P, L_ = asr(Z, lengths=L)    
     print("ASR OUT", P.shape)
     print(L_)
