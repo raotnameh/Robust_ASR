@@ -15,14 +15,14 @@ class block_B(nn.Module):
         self.layers = nn.ModuleList()
         if sub_blocks == 1:
             self.layers.append(
-                    nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation),
+                    nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False),
             )
             if batch_norm:
                 self.layers.append(
                         nn.Sequential(
                         nn.BatchNorm1d(out_channels),
+                        nn.ReLU(),
                         nn.Dropout(p=dropout),
-                        nn.ReLU()
                     )
                 )
         else:
@@ -30,7 +30,7 @@ class block_B(nn.Module):
                 if i == 0:
                     self.layers.append(
                         nn.Sequential(
-                            nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation),
+                            nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False),
                             nn.BatchNorm1d(out_channels),
                             nn.ReLU(),
                             nn.Dropout(p=dropout),
@@ -39,7 +39,7 @@ class block_B(nn.Module):
                 else: 
                     self.layers.append(
                         nn.Sequential(
-                            nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation),
+                            nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False),
                             nn.BatchNorm1d(out_channels),
                             nn.ReLU(),
                             nn.Dropout(p=dropout),
@@ -48,24 +48,27 @@ class block_B(nn.Module):
 
             self.layers.append(
                 nn.Sequential(
-                    nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation),
+                    nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False),
                     nn.BatchNorm1d(out_channels),
                 )
             )
             self.conv = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation),
+                nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
                 nn.BatchNorm1d(out_channels),
                 )        
             self.last = nn.Sequential(
-                nn.Dropout(p=dropout),
-                nn.ReLU())
+                nn.ReLU(),
+                nn.Dropout(p=dropout),)
     def forward(self, x, lengths):
-        y = x # 32,161,148 # (batch_size, channels, seq_len)
+        # y = x # 32,161,148 # (batch_size, channels, seq_len)
+        if self.sub_blocks != 1: initial = self.conv(x) 
         for i in range(len(self.layers)):
-            y, lengths = self.maskconv1d(self.layers[i](y), lengths, self.stride)
+            x = self.layers[i](x)
+            # y, lengths = self.maskconv1d(self.layers[i](y), lengths, self.stride)
         if self.sub_blocks != 1: 
-            y, lengths = self.maskconv1d(self.last(y + self.conv(x)), lengths, self.stride)
-        return y, lengths 
+            x = self.last(x + initial)
+            # y, lengths = self.maskconv1d(self.last(y + self.conv(x)), lengths, self.stride)
+        return x, (lengths/self.stride + 0.5).to(lengths.dtype)
 
     def maskconv1d(self,x,lengths, stride):
         lengths = (lengths/stride + 0.5).to(lengths.dtype)
@@ -291,9 +294,9 @@ if __name__ == '__main__':
     Z2, L = encoder(Z1, lengths=L)    
     print("ENCODER OUT", Z2.shape)
     Z, L = decoder(Z2,lengths=L)
-    for i in Z:
-        for j in i:
-            print(j)
+    # for i in Z:
+    #     for j in i:
+    #         print(j)
     print("DECODER OUT",Z.shape)
 
     # writer.add_graph(encoder,(Z1,L))
@@ -317,4 +320,4 @@ if __name__ == '__main__':
 
     P, L_ = asr(Z, lengths=L)    
     print("ASR OUT", P.shape)
-    print(L_)
+    # print(L_)
