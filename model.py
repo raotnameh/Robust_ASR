@@ -193,27 +193,6 @@ class Encoder(nn.Module):
             x, lengths = self.layers[i](x, lengths,)
         return x, lengths 
 
-'''class Decoder(nn.Module):
-    def __init__(self,in_channels,info):
-        super(Decoder, self).__init__()
-        
-        self.layers = nn.ModuleList()
-        for i in range(len(info)):
-            self.layers.append(
-                block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
-                    stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],
-                    )
-            )
-            in_channels = info[i]['out_channels']
-
-    def forward(self, x, lengths):
-        for i in range(len(self.layers)):
-            # print(i, "-------",x.shape)
-            x, lengths = self.layers[i](x, lengths,)
-        # x = F.sigmoid(x)
-        return x.permute(0,2,1), lengths # batch_size, seq_length,classes'''
-
 
 class Decoder(nn.Module):
     def __init__(self,in_channels,info):
@@ -224,51 +203,17 @@ class Decoder(nn.Module):
             self.layers.append(
                 block_Deco(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],
+                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],
                     )
             )
             in_channels = info[i]['out_channels']
-             
-        self.final = nn.Sequential(
-                nn.ConvTranspose1d(info[-1]['out_channels'], 
-                                   161, 
-                                   kernel_size=info[-1]['kernel_size'], 
-                                   stride=2, 
-                                   padding=(info[-1]['kernel_size'] // 2) * info[-1]['dilation'], 
-                                   dilation=info[-1]['dilation'], 
-                                   output_padding = 1),
-            )
                    
     def forward(self, x,):
         for i in range(len(self.layers)):
             # print(i, "-------",x.shape)
             x = self.layers[i](x) 
 
-        x = self.final(x)
-
         return x
-
-
-# class Decoder(nn.Module):
-#     def __init__(self,in_channels,info):
-#         super(Decoder, self).__init__()
-
-#         self.layers = nn.ModuleList()
-#         for i in range(len(info)):
-#             self.layers.append(
-#                 block_Deco(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
-#                     stride=info[i]['stride'], in_channels=in_channels,
-#                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],
-#                     )
-#             )
-#             in_channels = info[i]['out_channels']
-        
-#     def forward(self, x,):
-#         for i in range(len(self.layers)):
-#             # print(i, "-------",x.shape)
-#             x = self.layers[i](x)
-            
-#         return x
 
 
 def get_param_size(model):
