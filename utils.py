@@ -63,15 +63,15 @@ class Decoder_loss():
     def __init__(self,criteria):
         self.loss = criteria
 
-    def forward(self,target, output, WIDTHS,device):
+    def forward(self,target, output, WIDTHS):
 
         #create mask for padded instances
-        mask = torch.arange(max(WIDTHS)).expand(len(WIDTHS), max(WIDTHS)) < WIDTHS.unsqueeze(1)
-        mask = mask.unsqueeze(1).unsqueeze(2)
-        mask = torch.repeat_interleave(mask, target.shape[2], 2).to(device)
+        mask = torch.arange(target.shape[2]).expand(len(WIDTHS), target.shape[2]) < WIDTHS.unsqueeze(1)
+        mask = mask.unsqueeze(1)
+        mask = torch.repeat_interleave(mask, target.shape[1], 1)
     
         #limit output to input shape
-        output_inter = output[:,:,:target.shape[2],:target.shape[3]]
+        output_inter = output[:,:,:target.shape[2]]
 
         #do element-wise multiplication to zero padded instances
         outputs = output_inter*mask
