@@ -82,7 +82,7 @@ class block_B(nn.Module):
 
 
 class block_Deco(nn.Module):
-    def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2, nonlinear=2):
+    def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2, nonlinear=2, batch_norm = True):
         super(block_Deco, self).__init__()
 
         self.kernel_size = kernel_size
@@ -97,13 +97,16 @@ class block_Deco(nn.Module):
         self.layers = nn.ModuleList()
         if sub_blocks == 1:
             self.layers.append(
-                nn.Sequential(
                     nn.ConvTranspose1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, output_padding=output_padding),
-                    nn.BatchNorm1d(out_channels),
-                    nn.ReLU(),
-                    nn.Dropout(p=dropout),
-                        )
             )
+            if batch_norm:
+              self.layers.append(
+                  nn.Sequential(
+                      nn.BatchNorm1d(out_channels),
+                      nn.ReLU(),
+                      nn.Dropout(p=dropout),
+                          )
+              )
         else:
             for i in range(sub_blocks - 1):
                 if i == 0:
@@ -131,7 +134,7 @@ class block_Deco(nn.Module):
                 )
             )
             self.conv = nn.Sequential(
-                nn.ConvTranspose1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, output_padding=output_padding),
+                nn.ConvTranspose1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=self.stride, padding=self.padding, dilation=dilation, output_padding=output_padding),
                 nn.BatchNorm1d(out_channels),
                 )
             self.last = nn.Sequential(
@@ -145,8 +148,7 @@ class block_Deco(nn.Module):
             y = self.layers[i](y)
         if self.sub_blocks != 1: 
             y = self.last(y + self.conv(x))
-        return y 
-
+        return y
 
 
 
@@ -191,7 +193,7 @@ class Encoder(nn.Module):
             x, lengths = self.layers[i](x, lengths,)
         return x, lengths 
 
-class Decoder(nn.Module):
+'''class Decoder(nn.Module):
     def __init__(self,in_channels,info):
         super(Decoder, self).__init__()
         
@@ -210,7 +212,41 @@ class Decoder(nn.Module):
             # print(i, "-------",x.shape)
             x, lengths = self.layers[i](x, lengths,)
         # x = F.sigmoid(x)
-        return x.permute(0,2,1), lengths # batch_size, seq_length,classes
+        return x.permute(0,2,1), lengths # batch_size, seq_length,classes'''
+
+
+class Decoder(nn.Module):
+    def __init__(self,in_channels,info):
+        super(Decoder, self).__init__()
+
+        self.layers = nn.ModuleList()
+        for i in range(len(info)):
+            self.layers.append(
+                block_Deco(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
+                    stride=info[i]['stride'], in_channels=in_channels,
+                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],
+                    )
+            )
+            in_channels = info[i]['out_channels']
+             
+        self.final = nn.Sequential(
+                nn.ConvTranspose1d(info[-1]['out_channels'], 
+                                   161, 
+                                   kernel_size=info[-1]['kernel_size'], 
+                                   stride=2, 
+                                   padding=(info[-1]['kernel_size'] // 2) * info[-1]['dilation'], 
+                                   dilation=info[-1]['dilation'], 
+                                   output_padding = 1),
+            )
+                   
+    def forward(self, x,):
+        for i in range(len(self.layers)):
+            # print(i, "-------",x.shape)
+            x = self.layers[i](x) 
+
+        x = self.final(x)
+
+        return x
 
 
 # class Decoder(nn.Module):
