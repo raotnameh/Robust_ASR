@@ -159,7 +159,7 @@ if __name__ == '__main__':
                         noise_levels=(args.noise_min, args.noise_max))
 
     models = {} # All the models with their loss and optimizer are saved in this dict
-    
+   
     # Preprocessing
     pre = Encoder(161,configPre())
     pre_optimizer = torch.optim.Adam(pre.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
@@ -167,7 +167,7 @@ if __name__ == '__main__':
 
     # ASR
     print(len(labels))
-    asr = Decoder(configE()[-1]['out_channels'],configDecoder()).to(device)
+    asr = Predictor(configE()[-1]['out_channels'],configP())
     asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
     criterion = nn.CTCLoss(reduction='none')#CTCLoss()
     models['predictor'] = [asr, criterion, asr_optimizer]
@@ -175,7 +175,11 @@ if __name__ == '__main__':
     # Encoder and Decoder
     encoder = Encoder(configPre()[-1]['out_channels'],configE())
     e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-    models['encoder'] = [encoder, None, e_optimizer]
+    decoder = Decoder(configE()[-1]['out_channels'],configDec())
+    d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+    dec_loss = Decoder_loss(nn.MSELoss())
+
+    models['encoder'], models['decoder'] = [encoder, None, e_optimizer], [decoder, dec_loss, d_optimizer]
 
     # Lr scheduler
     scheduler = []
@@ -183,10 +187,9 @@ if __name__ == '__main__':
         models[i][0].to(device)
         scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(models[i][-1], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
 
-    
     # Printing the models
     if not args.silent: print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
-    
+    # exit()
     #Creating the dataset
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
@@ -270,10 +273,13 @@ if __name__ == '__main__':
                     # Forward pass
                     x_, updated_lengths = models['pre'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
                     z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-                    asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
-                    asr_out = asr_out.transpose(0, 1)  # TxNxH
-                    asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes).contiguous())
-                    loss = asr_loss
+                    decoder_out = models['decoder'][0](z) # Decoder network
+                    # asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
+                    # asr_out = asr_out.transpose(0, 1) # TxNxH
+                    
+                    decoder_loss = models['decoder'][1].forward(inputs.squeeze(), decoder_out, input_sizes, device)
+                    # asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes).contiguous())
+                    loss = decoder_loss #asr_loss + dec_loss
 
 
                 p_loss = loss.item()

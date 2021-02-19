@@ -194,6 +194,28 @@ class Encoder(nn.Module):
         return x, lengths 
 
 
+class Predictor(nn.Module):
+    def __init__(self,in_channels,info):
+        super(Predictor, self).__init__()
+        
+        self.layers = nn.ModuleList()
+        for i in range(len(info)):
+            self.layers.append(
+                block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
+                    stride=info[i]['stride'], in_channels=in_channels,
+                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],
+                    )   
+            )   
+            in_channels = info[i]['out_channels']
+
+    def forward(self, x, lengths):
+        for i in range(len(self.layers)):
+            # print(i, "-------",x.shape)
+            x, lengths = self.layers[i](x, lengths,)
+        # x = F.sigmoid(x)
+        return x.permute(0,2,1), lengths # batch_size, seq_length,classes
+
+
 class Decoder(nn.Module):
     def __init__(self,in_channels,info):
         super(Decoder, self).__init__()
