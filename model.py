@@ -89,6 +89,7 @@ class block_Deco(nn.Module):
         self.stride = stride
         self.padding = ((kernel_size) // 2) * dilation
         self.sub_blocks = sub_blocks
+        self.dilation = dilation
         if self.stride >= 2:
             output_padding = self.stride - 1
         else:
@@ -142,13 +143,42 @@ class block_Deco(nn.Module):
                 nn.Dropout(p=dropout),
                 )
 
-    def forward(self, x):
+    def forward(self, x, lens):
         y = x # 32,1,148
         for i in range(len(self.layers)):
-            y = self.layers[i](y)
+            #y = self.layers[i](y)
+            y, lens = self.mask_conv(self.layers[i](y), lens)
         if self.sub_blocks != 1: 
+            #y = self.last(y + self.conv(x))
             y = self.last(y + self.conv(x))
-        return y
+            y, lens = self.mask_conv(y, lens)
+
+        return y, lens
+
+    def mask_conv(self, x, x_lens):
+        
+        # get max size of the time steps
+        max_len = x.size(2)
+
+        # create vector with time step indexes
+        idxs = torch.arange(max_len, dtype=x_lens.dtype, device=x_lens.device)
+
+        # create boolean mask using the tim step indexes
+        mask = idxs.expand(x_lens.size(0), max_len) >= x_lens.unsqueeze(1)
+
+        # fill mask with batch with 0 for padded time steps
+        x = x.masked_fill(mask.unsqueeze(1).to(device=x.device), 0)
+
+        # get the lengths to pass to the next layer
+        x_lens = self.get_seq_len(x_lens)
+
+        return x, x_lens
+
+
+    def get_seq_len(self, lens):
+
+        return ((lens + 2 * self.padding - self.dilation
+                * (self.kernel_size - 1) - 1) // self.stride + 1)
 
 
 
@@ -230,10 +260,10 @@ class Decoder(nn.Module):
             )
             in_channels = info[i]['out_channels']
                    
-    def forward(self, x,):
+    def forward(self, x, lens):
         for i in range(len(self.layers)):
             # print(i, "-------",x.shape)
-            x = self.layers[i](x) 
+            x = self.layers[i](x, lens) 
 
         return x
 
