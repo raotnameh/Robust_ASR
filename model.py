@@ -261,9 +261,12 @@ class Decoder(nn.Module):
             in_channels = info[i]['out_channels']
                    
     def forward(self, x, lens):
+        x = x.transpose(1,2)
         for i in range(len(self.layers)):
             # print(i, "-------",x.shape)
-            x = self.layers[i](x, lens) 
+            x, lens = self.layers[i](x, lens) 
+
+        x = x.transpose(1,2) 
 
         return x
 
