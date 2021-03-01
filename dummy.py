@@ -19,6 +19,7 @@ from model import *
 
 from utils import reduce_tensor, check_loss, Decoder_loss, validation, weights_
 
+
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--version', default='V1.0', help='experiment version')
 parser.add_argument('--train-manifest', metavar='DIR',

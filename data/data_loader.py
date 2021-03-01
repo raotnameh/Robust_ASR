@@ -183,10 +183,7 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         audio_path, transcript_path = sample[0], sample[1]
         spect = self.parse_audio(audio_path)
         transcript = self.parse_transcript(transcript_path)
-        # if (len(sample)>2): #return accentData as well if it's available
-        #     print("using accents")
-        #     accentData = accents[sample[2]]
-        #     return spect,transcript,accentData
+        
         return spect, transcript,self.accent[sample[2]]
 
     def parse_transcript(self, transcript_path):

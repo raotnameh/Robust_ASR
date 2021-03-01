@@ -1,4 +1,5 @@
 #from apex import amp
+
 import argparse
 import json
 import os
@@ -9,15 +10,15 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 import numpy as np
-from warpctc_pytorch import CTCLoss
 from collections import OrderedDict
 import pandas as pd
+from config import *
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler
 from data.data_loader import get_accents
 from decoder import GreedyDecoder
-
-from utils import reduce_tensor, check_loss, Decoder_loss, validation, weights_
+from model import *
+from utils import *
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--version', default='V1.0', help='experiment version')
@@ -85,11 +86,11 @@ parser.add_argument('--fp16', action='store_true',
                     help='training using fp16')
 
 # Hyper parameters for the loss functions
-parser.add_argument('--mw-alpha', type= float, default= 1,
+parser.add_argument('--alpha', type= float, default= 1,
                     help= 'weight for reconstruction loss')
-parser.add_argument('--mw-beta', type= float, default= 1,
+parser.add_argument('--beta', type= float, default= 1,
                     help= 'weight for discriminator loss')              
-parser.add_argument('--mw-gamma', type= float, default= 1,
+parser.add_argument('--gamma', type= float, default= 1,
                     help= 'weight for regularisation')             
 
 # noise arguments
@@ -110,7 +111,7 @@ if __name__ == '__main__':
     version_ = args.version
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.enabled = False#True
-    accent_dict = get_accents(args.train_manifest) 
+    accent_dict = get_accents(args.train_manifest)
     accent = list(accent_dict.values())
 
     # Set seeds for determinism
@@ -137,11 +138,9 @@ if __name__ == '__main__':
     writer = SummaryWriter(tbd_logs)
 
     wer_results = torch.Tensor(args.epochs)
-    best_wer, best_cer = None, None
-    d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch = 0, 0, 0, 0
-    poor_cer_list = []
+    poor_cer_list, best_wer, best_cer = [], None, None
+    d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch, start_iter = 0, 0, 0, 0, 0
     eps = 0.0000000001 # epsilon value
-    start_iter = 0
     
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
@@ -203,7 +202,7 @@ if __name__ == '__main__':
         models['encoder'] = [encoder, None, e_optimizer]
         models['decoder'] = [decoder, dec_loss, d_optimizer]
         # ASR
-        asr = Decoder(configE()[-1]['out_channels'],configP()).to(device)
+        asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
         asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         criterion = nn.CTCLoss(reduction='none')#CTCLoss()
         models['predictor'] = [asr, criterion, asr_optimizer]
@@ -214,22 +213,23 @@ if __name__ == '__main__':
             models['forget_net'] = [fnet, None, fnet_optimizer]
         # Discriminator
         if not args.train_asr:
-            discriminator = DiscimnateNet(classes=len(accent),num_modules=args.disc_modules,residual_bool=args.disc_res)
+            discriminator = Discriminator(configFN()[-1]['out_channels'],configDM(),classes=len(accent))
             discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             # Weighted loss depending on the class count
-            disc_loss_weights = weights_(args, eps, accent, accent_dict)     
-            dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights.to(device))
+            disc_loss_weights = weights_(args, accent_dict).to(device)   
+            dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights)
             models['discriminator'] = [discriminator, dis_loss, discriminator_optimizer]
+
+    # Printing the models
+    if not args.silent: print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
+    # Printing the parameters of all the different modules 
+    if not args.silent: [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
 
     # Lr scheduler
     scheduler = []
     for i in models.keys():
         models[i][0].to(device)
         scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(models[i][-1], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
-
-    
-    # Printing the models
-    if not args.silent: print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
     
     #Creating the dataset
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
@@ -242,7 +242,7 @@ if __name__ == '__main__':
                                       normalize=True, speed_volume_perturb=False, spec_augment=False)
 
     train_sampler = BucketingSampler(train_dataset, batch_size=args.batch_size)
-disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_size)
+    disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_size)
 
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler)
@@ -259,17 +259,8 @@ disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_
         print("Shuffling batches for the following epochs")
         train_sampler.shuffle(start_epoch)
 
-    # Printing the parameters of all the different modules 
-    if not args.silent: [print(f"Number of parameters for {i[0]} in Million is: {DeepSpeech.get_param_size(i[1][0])/1000000}") for i in models.items()]
     accent_list = sorted(accent, key=lambda x:accent[x])
-    a += f"epoch,epoch_time,wer,cer,acc,"
-    for accent_type in accent_list:
-        a += f"precision_{accent_type},"
-    for accent_type in accent_list:
-        a += f"recall_{accent_type},"
-    for accent_type in accent_list:
-        a += f"f1_{accent_type},"
-    a += "d_avg_loss,p_avg_loss\n"
+    a += f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
     
     # To choose the number of times update the discriminator
     update_rule = args.update_rule
@@ -280,11 +271,6 @@ disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_
     print(f"Initial Probability to udpate to the discrimiantor: {prob}")
     diff = np.array([ prob[i] - prob[-1-i] for i in range(len(prob))])
     diff /= len(train_sampler)*args.num_epochs
-
-    #reading weights for different losses
-    alpha = args.mw_alpha
-    beta = args.mw_beta
-    gamma = args.mw_gamma
 
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False)
     for epoch in range(start_epoch, args.epochs):
@@ -311,15 +297,15 @@ disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
-                    # Forward pass
-                    z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-                    decoder_out = models['decoder'][0](z) # Decoder network
-                    asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths.cpu()) # Predictor network
+                    # Forward pass                    
+                    x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+                    z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
+                    decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                    asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
                     # Loss                
                     asr_out = asr_out.transpose(0, 1)  # TxNxH
-                    asr_loss = models['predictor'][1](asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
-                    asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                    decoder_loss = models['decoder'][1].forward(inputs, decoder_out, input_sizes,device) * args.mw_alpha
+                    asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
+                    decoder_loss = models['decoder'][1].forward(inputs.squeeze(), decoder_out, input_sizes, device) * args.alpha
                     loss = asr_loss + decoder_loss
 
                 p_loss = loss.item()
@@ -404,14 +390,14 @@ disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_
                 discriminator_out = models['discriminator'][0](z_) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths.cpu()) # Predictor network
                 # Loss
-                discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.mw_beta
+                discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.beta
                 p_d_loss = discriminator_loss.item()
-                mask_regulariser_loss = (m * (1-m)).mean() * args.mw_gamma
+                mask_regulariser_loss = (m * (1-m)).mean() * args.gamma
 
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = models['predictor'][1](asr_out.float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
                 asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-                decoder_loss = models['decoder'][1].forward(inputs, decoder_out, input_sizes,device) * args.mw_alpha
+                decoder_loss = models['decoder'][1].forward(inputs, decoder_out, input_sizes,device) * args.alpha
                 
             loss = asr_loss + decoder_loss + mask_regulariser_loss
             scaler.scale(discriminator_loss).backward(retain_graph=True)
@@ -458,7 +444,7 @@ disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_
             a += f"{class_wise_recall[idx]},"
         for idx, accent_type in enumerate(accent_list):
             a += f"{class_wise_f1[idx]},"
-        a += f"{d_avg_loss},{p_avg_loss},{alpha},{beta},{gamma}\n"
+        a += f"{d_avg_loss},{p_avg_loss},{args.alpha},{args.beta},{args.gamma}\n"
 
         with open(loss_save, "w") as f:
             f.write(a)
