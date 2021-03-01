@@ -82,14 +82,13 @@ class block_B(nn.Module):
 
 
 class block_Deco(nn.Module):
-    def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2, nonlinear=2, batch_norm = True):
+    def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2, nonlinear=2):
         super(block_Deco, self).__init__()
 
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = ((kernel_size) // 2) * dilation
         self.sub_blocks = sub_blocks
-        self.dilation = dilation
         if self.stride >= 2:
             output_padding = self.stride - 1
         else:
@@ -98,16 +97,13 @@ class block_Deco(nn.Module):
         self.layers = nn.ModuleList()
         if sub_blocks == 1:
             self.layers.append(
+                nn.Sequential(
                     nn.ConvTranspose1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, output_padding=output_padding),
+                    nn.BatchNorm1d(out_channels),
+                    nn.ReLU(),
+                    nn.Dropout(p=dropout),
+                        )
             )
-            if batch_norm:
-              self.layers.append(
-                  nn.Sequential(
-                      nn.BatchNorm1d(out_channels),
-                      nn.ReLU(),
-                      nn.Dropout(p=dropout),
-                          )
-              )
         else:
             for i in range(sub_blocks - 1):
                 if i == 0:
@@ -135,7 +131,7 @@ class block_Deco(nn.Module):
                 )
             )
             self.conv = nn.Sequential(
-                nn.ConvTranspose1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=self.stride, padding=self.padding, dilation=dilation, output_padding=output_padding),
+                nn.ConvTranspose1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, output_padding=output_padding),
                 nn.BatchNorm1d(out_channels),
                 )
             self.last = nn.Sequential(
@@ -143,42 +139,14 @@ class block_Deco(nn.Module):
                 nn.Dropout(p=dropout),
                 )
 
-    def forward(self, x, lens):
+    def forward(self, x):
         y = x # 32,1,148
         for i in range(len(self.layers)):
-            #y = self.layers[i](y)
-            y, lens = self.mask_conv(self.layers[i](y), lens)
+            y = self.layers[i](y)
         if self.sub_blocks != 1: 
-            #y = self.last(y + self.conv(x))
             y = self.last(y + self.conv(x))
-            y, lens = self.mask_conv(y, lens)
+        return y 
 
-        return y, lens
-
-    def mask_conv(self, x, x_lens):
-        
-        # get max size of the time steps
-        max_len = x.size(2)
-
-        # create vector with time step indexes
-        idxs = torch.arange(max_len, dtype=x_lens.dtype, device=x_lens.device)
-
-        # create boolean mask using the tim step indexes
-        mask = idxs.expand(x_lens.size(0), max_len) >= x_lens.unsqueeze(1)
-
-        # fill mask with batch with 0 for padded time steps
-        x = x.masked_fill(mask.unsqueeze(1).to(device=x.device), 0)
-
-        # get the lengths to pass to the next layer
-        x_lens = self.get_seq_len(x_lens)
-
-        return x, x_lens
-
-
-    def get_seq_len(self, lens):
-
-        return ((lens + 2 * self.padding - self.dilation
-                * (self.kernel_size - 1) - 1) // self.stride + 1)
 
 
 
@@ -223,10 +191,9 @@ class Encoder(nn.Module):
             x, lengths = self.layers[i](x, lengths,)
         return x, lengths 
 
-
-class Predictor(nn.Module):
+class Decoder(nn.Module):
     def __init__(self,in_channels,info):
-        super(Predictor, self).__init__()
+        super(Decoder, self).__init__()
         
         self.layers = nn.ModuleList()
         for i in range(len(info)):
@@ -234,8 +201,8 @@ class Predictor(nn.Module):
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],
-                    )   
-            )   
+                    )
+            )
             in_channels = info[i]['out_channels']
 
     def forward(self, x, lengths):
@@ -246,26 +213,26 @@ class Predictor(nn.Module):
         return x.permute(0,2,1), lengths # batch_size, seq_length,classes
 
 
-class Decoder(nn.Module):
-    def __init__(self,in_channels,info):
-        super(Decoder, self).__init__()
+# class Decoder(nn.Module):
+#     def __init__(self,in_channels,info):
+#         super(Decoder, self).__init__()
 
-        self.layers = nn.ModuleList()
-        for i in range(len(info)):
-            self.layers.append(
-                block_Deco(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
-                    stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],
-                    )
-            )
-            in_channels = info[i]['out_channels']
-                   
-    def forward(self, x, lens):
-        for i in range(len(self.layers)):
-            # print(i, "-------",x.shape)
-            x = self.layers[i](x, lens) 
-
-        return x
+#         self.layers = nn.ModuleList()
+#         for i in range(len(info)):
+#             self.layers.append(
+#                 block_Deco(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
+#                     stride=info[i]['stride'], in_channels=in_channels,
+#                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],
+#                     )
+#             )
+#             in_channels = info[i]['out_channels']
+        
+#     def forward(self, x,):
+#         for i in range(len(self.layers)):
+#             # print(i, "-------",x.shape)
+#             x = self.layers[i](x)
+            
+#         return x
 
 
 def get_param_size(model):
