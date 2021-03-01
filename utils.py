@@ -58,12 +58,12 @@ class Decoder_loss():
     def forward(self,target, output, WIDTHS,device):
 
         #create mask for padded instances
-        mask = torch.arange(max(WIDTHS)).expand(len(WIDTHS), max(WIDTHS)) < WIDTHS.unsqueeze(1)
-        mask = mask.unsqueeze(1).unsqueeze(2)
-        mask = torch.repeat_interleave(mask, target.shape[2], 2).to(device)
-    
+        mask = torch.arange(target.shape[2]).expand(len(WIDTHS), target.shape[2]) < WIDTHS.unsqueeze(1)
+        mask = mask.unsqueeze(1)
+        mask = torch.repeat_interleave(mask, target.shape[1], 1).to(device)
+
         #limit output to input shape
-        output_inter = output[:,:,:target.shape[2],:target.shape[3]]
+        output_inter = output[:,:,:target.shape[2]]
 
         #do element-wise multiplication to zero padded instances
         outputs = output_inter*mask
@@ -82,6 +82,7 @@ def weights_(args, accent_dict):
     return torch.sum(disc_loss_weights) / disc_loss_weights
 
 def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001):
+    [i[0].eval() for i in models.values()]
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
     acc_weights = np.ones((len(accent)))*eps
@@ -104,8 +105,9 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
             discriminator_out = models['discriminator'][0](z_) # Discriminator network
             asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
         else:
-            z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-            decoder_out = models['decoder'][0](z) # Decoder network
+            # Forward pass                    
+            x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+            z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
             asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
 
         # Predictor metric

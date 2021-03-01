@@ -2,7 +2,7 @@ import argparse
 import os
 
 file = "train"
-batch = 128
+batch = 64
 
 #train_ = "data/csvs/train7_sorted.csv"
 train_ = "out.csv"

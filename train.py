@@ -110,7 +110,7 @@ if __name__ == '__main__':
     if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_rank
     version_ = args.version
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.enabled = False#True
+    torch.backends.cudnn.enabled = True
     accent_dict = get_accents(args.train_manifest)
     accent = list(accent_dict.values())
 
