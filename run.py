@@ -5,8 +5,8 @@ file = "train"
 batch = 64
 
 #train_ = "data/csvs/train7_sorted.csv"
-train_ = "out.csv"
-test_ = "outd.csv"
+train_ = "csvs/train_sorted_EN_US.csv"
+test_ = "csvs/dev_sorted_EN_US.csv"
 #test_ = "data/csvs/dev4_sorted.csv"
 gpu_rank = "0"
 def run(save):
