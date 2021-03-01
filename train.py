@@ -284,7 +284,7 @@ if __name__ == '__main__':
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass                    
-                    x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+                    x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                     z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
                     decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                     asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
@@ -334,7 +334,7 @@ if __name__ == '__main__':
                 accents_ = torch.tensor(accents_).to(device)
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
-                    x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+                    x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                     z, updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
                     m, updated_lengths = models['forget_net'][0](x_,updated_lengths) # Forget network
                     z_ = z * m # Forget Operation
@@ -375,7 +375,7 @@ if __name__ == '__main__':
             p_counter += 1
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
-                x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+                x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                 z, updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
                 decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                 m, updated_lengths = models['forget_net'][0](x_,updated_lengths) # Forget network
