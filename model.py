@@ -145,14 +145,22 @@ class block_Deco(nn.Module):
     def forward(self, x, lengths):
         y = x # 32,1,148
         for i in range(len(self.layers)):
-            #y = self.layers[i](y)
-            y, lengths = self.mask_conv(self.layers[i](y), lengths)
-        if self.sub_blocks != 1: 
-            #y = self.last(y + self.conv(x))
+            y = self.layers[i](y)
+        if self.sub_blocks != 1:
             y = self.last(y + self.conv(x))
-            y, lengths = self.mask_conv(y, lengths)
-
         return y, lengths
+    
+    # def forward(self, x, lengths):
+    #     y = x # 32,1,148
+    #     for i in range(len(self.layers)):
+    #         #y = self.layers[i](y)
+    #         y, lengths = self.mask_conv(self.layers[i](y), lengths)
+    #     if self.sub_blocks != 1: 
+    #         #y = self.last(y + self.conv(x))
+    #         y = self.last(y + self.conv(x))
+    #         y, lengths = self.mask_conv(y, lengths)
+
+    #     return y, lengths
 
     def mask_conv(self, x, x_lengths):
         
@@ -354,7 +362,7 @@ if __name__ == '__main__':
     # writer.close()
     
 
-    M, L_ = forget_net(Z1, lengths=WIDTHS)    
+    M, L_ = forget_net(Z1, lengths=L)    
     print("FORGET-NET OUT", M.shape)
     
     Z_ = Z2 * M
