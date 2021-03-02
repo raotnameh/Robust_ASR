@@ -410,7 +410,7 @@ if __name__ == '__main__':
             p_avg_loss += asr_loss.item()
             p_d_avg_loss += p_d_loss
             # Logging to tensorboard and train.log.
-            writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
+            # writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
             writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
             # writer.add_scalar('Train/Dummy-Discriminator-Per-Iteration-Loss', p_d_loss, len(train_sampler)*epoch+i+1) # Dummy Disctrimintaor loss in the current iteration.
             writer.add_scalar('Train/Dummy-Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
