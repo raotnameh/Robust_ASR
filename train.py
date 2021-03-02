@@ -313,9 +313,12 @@ if __name__ == '__main__':
                 if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
 
-            if args.num_epochs > epoch: prob -= diff
-            else: prob = prob_ 
-            update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
+            # if args.num_epochs > epoch: prob -= diff
+            # else: prob = prob_ 
+            # update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
+            
+            if args.num_epochs > epoch: update_rule = 1
+            else: update_rule = args.update_rule
             
             for k in range(int(update_rule)): #updating the discriminator only  
                 
@@ -334,7 +337,7 @@ if __name__ == '__main__':
                 accents_ = torch.tensor(accents_).to(device)
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
-                    x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
+                    x_, updated_lengths = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
                     z, updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
                     m, updated_lengths = models['forget_net'][0](x_,updated_lengths) # Forget network
                     z_ = z * m # Forget Operation
@@ -381,9 +384,9 @@ if __name__ == '__main__':
                 m, updated_lengths = models['forget_net'][0](x_,updated_lengths) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
-                asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
+                asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
                 # Loss                
-                discriminator_loss = models['discriminator'][1](discriminator_out, accents_) * args.beta
+                discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.beta
                 p_d_loss = discriminator_loss.item()
                 
                 mask_regulariser_loss = (m * (1-m)).mean() * args.gamma
