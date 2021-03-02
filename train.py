@@ -72,7 +72,7 @@ parser.add_argument('--beta', type= float, default= 1,
 parser.add_argument('--gamma', type= float, default= 1,
                     help= 'weight for regularisation')             
 
-# noise arguments
+# input augments
 parser.add_argument('--augment', dest='augment', action='store_true', help='Use random tempo and gain perturbations.')
 parser.add_argument('--noise-dir', default=None,
                     help='Directory to inject noise into audio. If default, noise Inject not added')
@@ -93,7 +93,7 @@ if __name__ == '__main__':
     if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_rank
     version_ = args.version
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.enabled = False#True
+    torch.backends.cudnn.enabled = True
     accent_dict = get_accents(args.train_manifest)
     accent = list(accent_dict.values())
 
@@ -179,10 +179,10 @@ if __name__ == '__main__':
         # Encoder and Decoder
         encoder = Encoder(configPre()[-1]['out_channels'],configE())
         e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        models['encoder'] = [encoder, None, e_optimizer]
         decoder = Decoder(configE()[-1]['out_channels'],configD())
         d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
         dec_loss = Decoder_loss(nn.MSELoss())
-        models['encoder'] = [encoder, None, e_optimizer]
         models['decoder'] = [decoder, dec_loss, d_optimizer]
         # ASR
         asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
