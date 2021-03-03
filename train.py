@@ -387,7 +387,7 @@ if __name__ == '__main__':
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
                 # Loss                
                 discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.beta
-                p_d_loss = discriminator_loss.item()
+                p_d_loss = discriminator_loss.item()    
                 
                 mask_regulariser_loss = (m * (1-m)).mean() * args.gamma
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
@@ -417,7 +417,7 @@ if __name__ == '__main__':
             writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
             # writer.add_scalar('Train/Dummy-Discriminator-Per-Iteration-Loss', p_d_loss, len(train_sampler)*epoch+i+1) # Dummy Disctrimintaor loss in the current iteration.
             writer.add_scalar('Train/Dummy-Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
-            if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,4)} ({round(p_d_avg_loss/p_counter,4)})") 
+            if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,8)} ({round(p_d_avg_loss/p_counter,8)})") 
              
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
