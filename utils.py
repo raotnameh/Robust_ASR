@@ -163,3 +163,9 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
         #     return wer, cer, num, length,  weighted_precision, weighted_recal, weighted_f1
 
     return wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy
+
+
+def Normalize(input):
+    '''
+    Normalize the input such that it only varies in the direction and not the magnitude
+    '''

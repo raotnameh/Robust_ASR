@@ -127,17 +127,31 @@ if __name__ == '__main__':
     d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch, start_iter = 0, 0, 0, 0, 0
     eps = 0.0000000001 # epsilon value
     
+    #Loading the labels
+    with open(args.labels_path) as label_file:
+        labels = str(''.join(json.load(label_file)))
+
+    #Creating the configuration apply to the audio
+    audio_conf = dict(sample_rate=args.sample_rate,
+                        window_size=args.window_size,
+                        window_stride=args.window_stride,
+                        window=args.window,
+                        noise_dir=args.noise_dir,
+                        noise_prob=args.noise_prob,
+                        noise_levels=(args.noise_min, args.noise_max))
+
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
         models = package['models'] 
-        labels, audio_conf, version_, start_iter = models['predictor'][0].labels, models['predictor'][0].audio_conf, package['version'], package['start_iter']
-
+        version_, start_iter = package['version'], package['start_iter']
+        
         if not args.train_asr: # if adversarial training.
-            assert 'discrimator' in models and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
+            assert 'discrimator' and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
         else: 
             try: 
+                print("Deleting the forget_net and discriminator")
                 del models['forget_net']
-                del models['discrimator']
+                del models['discriminator']
             except: pass
 
         if not args.finetune: # If continuing training after the last epoch.
@@ -152,6 +166,7 @@ if __name__ == '__main__':
             poor_cer_list = package['poor_cer_list']
             a = package['train.log']
         else:
+            start_iter = 0
             a = ""
             version_ = args.version
             for i in models:
@@ -159,18 +174,6 @@ if __name__ == '__main__':
 
     else:
         a = ""
-        #Loading the labels
-        with open(args.labels_path) as label_file:
-            labels = str(''.join(json.load(label_file)))
-        #Creating the configuration apply to the audio
-        audio_conf = dict(sample_rate=args.sample_rate,
-                            window_size=args.window_size,
-                            window_stride=args.window_stride,
-                            window=args.window,
-                            noise_dir=args.noise_dir,
-                            noise_prob=args.noise_prob,
-                            noise_levels=(args.noise_min, args.noise_max))
-
         models = {} # All the models with their loss and optimizer are saved in this dict
         
         # Preprocessing
@@ -214,13 +217,11 @@ if __name__ == '__main__':
     if not args.silent: 
         [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
         print(f"Total number pof parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
+        print(f"Initial learning rate: {print(models['encoder'][-1].param_groups[0]['lr'])}")
 
-
-    # Lr scheduler
-    scheduler = []
+    # Modules to gpu
     for i in models.keys():
         models[i][0].to(device)
-        scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(models[i][-1], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
     
     #Creating the dataset
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
@@ -252,16 +253,6 @@ if __name__ == '__main__':
 
     accent_list = sorted(accent, key=lambda x:accent[x])
     a += f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
-    
-    # To choose the number of times update the discriminator
-    update_rule = args.update_rule
-    prob = np.geomspace(1, update_rule*100000, num=update_rule)[::-1]
-    prob /= np.sum(prob)
-    prob_ = [0 for i in prob]
-    prob_[-1] = 1
-    print(f"Initial Probability to udpate to the discrimiantor: {prob}")
-    diff = np.array([ prob[i] - prob[-1-i] for i in range(len(prob))])
-    diff /= len(train_sampler)*args.num_epochs
 
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False)
     for epoch in range(start_epoch, args.epochs):
@@ -311,20 +302,15 @@ if __name__ == '__main__':
                     print("Skipping grad update")
                     p_loss = 0.0
 
-                p_avg_loss += asr_loss.item()
+                p_avg_loss += loss.item()
                 # Logging to tensorboard.
                 # writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
                 writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                 if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
 
-            # if args.num_epochs > epoch: prob -= diff
-            # else: prob = prob_ 
-            # update_rule = np.random.choice(args.update_rule, 1, p=prob) + 1
-            
             if args.num_epochs > epoch: update_rule = 1
             else: update_rule = args.update_rule
-            
             for k in range(int(update_rule)): #updating the discriminator only  
                 
                 d_counter += 1
@@ -366,9 +352,9 @@ if __name__ == '__main__':
             # Logging to tensorboard.
             writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_avg_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
 
-
             # Random labels for adversarial learning of the predictor network                
             # Shuffling the elements of a list s.t. elements are not same at the same indices
+        
             dummy = [] 
             for acce in accents:
                 while True:
@@ -492,9 +478,11 @@ if __name__ == '__main__':
         d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
 
         # anneal lr
-        for i in scheduler:
-            i.step()
-
+        for i in models:
+            for g in models[i][-1].param_groups:
+                g['lr'] = g['lr'] * args.learning_anneal
+            print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
+        
         if not args.no_shuffle:
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
