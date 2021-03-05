@@ -11,13 +11,15 @@ import numpy as np
 from collections import OrderedDict
 import pandas as pd
 from config import *
+from ssl_config import *
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler
 from data.data_loader import get_accents
 from decoder import GreedyDecoder
 from model import *
+from model_ssl import *
 
-from utils import reduce_tensor, check_loss, Decoder_loss, validation, weights_
+from utils import reduce_tensor, check_loss, Decoder_loss, validation, weights_, ContrastiveLoss
 
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
@@ -86,7 +88,7 @@ parser.add_argument('--fp16', action='store_true',
                     help='training using fp16')
 
 # Hyper parameters for the loss functions
-parser.add_argument('--mw-alpha', type= float, default= 1,
+parser.add_argument('--mw-alpha', type= float, default= 0.1,
                     help= 'weight for reconstruction loss')
 parser.add_argument('--mw-beta', type= float, default= 1,
                     help= 'weight for discriminator loss')              
@@ -161,7 +163,7 @@ if __name__ == '__main__':
     models = {} # All the models with their loss and optimizer are saved in this dict
    
     # Preprocessing
-    pre = Encoder(161,configPre())
+    '''pre = Encoder(161,configPre())
     pre_optimizer = torch.optim.Adam(pre.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
     models['pre'] = [pre, None, pre_optimizer]
 
@@ -179,16 +181,25 @@ if __name__ == '__main__':
     d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
     dec_loss = Decoder_loss(nn.MSELoss())
 
-    models['encoder'], models['decoder'] = [encoder, None, e_optimizer], [decoder, dec_loss, d_optimizer]
+    models['encoder'], models['decoder'] = [encoder, None, e_optimizer], [decoder, dec_loss, d_optimizer]'''
+
+    ssl_model_config = Wav2Vec2Config
+    ssl_loss = ContrastiveLoss()
+
+    ssl_model = Wav2Vec2Model(Wav2Vec2Config)
+    optimizer = torch.optim.Adam(ssl_model.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+    ssl_model.to(device)
+
+    models['ssl_model'] = [ssl_model]
 
     # Lr scheduler
-    scheduler = []
-    for i in models.keys():
-        models[i][0].to(device)
-        scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(models[i][-1], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
+    #scheduler = []
+    #for i in models.keys():
+    #    models[i][0].to(device)
+    #    scheduler.append(torch.optim.lr_scheduler.MultiplicativeLR(models[i][-1], lr_lambda=lambda epoch:args.learning_anneal, verbose=True))
 
     # Printing the models
-    if not args.silent: print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
+    #if not args.silent: print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
     # exit()
     #Creating the dataset
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
@@ -270,19 +281,16 @@ if __name__ == '__main__':
                 [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
-                    # Forward pass
-                    x_, updated_lengths = models['pre'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
-                    z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-                    decoder_out = models['decoder'][0](z) # Decoder network
-                    # asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
-                    # asr_out = asr_out.transpose(0, 1) # TxNxH
-                    
-                    decoder_loss = models['decoder'][1].forward(inputs.squeeze(), decoder_out, input_sizes, device)
-                    # asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes).contiguous())
-                    loss = decoder_loss #asr_loss + dec_loss
 
-
+                    out = ssl_model(inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+                
+                    loss = ssl_loss.forward(out['x'])# + alpha*ssl_model.get_extra_losses(out)[0] #asr_loss + dec_loss
+                
                 p_loss = loss.item()
+                loss.backward()
+                optimizer.step()
+
+                '''p_loss = loss.item()
                 valid_loss, error = check_loss(loss, p_loss)
                 if valid_loss:
                     scaler.scale(loss).backward()
@@ -292,7 +300,7 @@ if __name__ == '__main__':
                 else: 
                     print(error)
                     print("Skipping grad update")
-                    p_loss = 0.0
+                    p_loss = 0.0'''
                 
 
                 p_avg_loss += p_loss

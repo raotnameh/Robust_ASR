@@ -81,6 +81,18 @@ class Decoder_loss():
 
         return loss_
 
+class ContrastiveLoss():
+
+    def __init__(self):
+        pass
+
+    def forward(self,logits):
+
+        logits_ = logits.reshape(-1, logits.size(-1))
+        final_contranstive_loss = (torch.exp(logits_[:,0])/torch.sum(torch.exp(logits_[:,1:]), dim = 1))
+
+        return torch.mean(final_contranstive_loss)
+
 def weights_(args, eps, accent, accent_dict):
     accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
     disc_loss_weights = torch.zeros(len(accent)) + eps

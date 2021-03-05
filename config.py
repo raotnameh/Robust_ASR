@@ -30,7 +30,7 @@ def configE():
         [5,11,1,384,0.2,1,True],
         [5,11,1,512,0.2,1,True],
         [5,11,1,640,0.3,1,True],
-        [5,11,1,768,0.3,1,True],
+        #[5,11,1,768,0.3,1,True],
     ]
     return prepare_info(layers)
 
@@ -52,7 +52,7 @@ def configDec():
         [5,11,1,512,0.2,1,True],
         [5,11,1,384,0.2,1,True],
         [5,11,1,256,0.2,1,True],
-        [1,11,2,161,0.0,1,False],
+        [1,11,1,768,0.0,1,False],
     ]
 
     return prepare_info(layers)

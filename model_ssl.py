@@ -23,215 +23,36 @@ from fairseq.modules import (
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 from fairseq.utils import buffered_arange
-from model import block_B, block_Deco, Encoder, Decoder, get_param_size
+from model import block_B, block_Deco, Encoder, Decoder, get_param_size,Pre
+from ssl_config import *
+from config import *
+## import config files
 
 
 EXTRACTOR_MODE_CHOICES = ChoiceEnum(["default", "layer_norm"])
 MASKING_DISTRIBUTION_CHOICES = ChoiceEnum(["static", "uniform", "normal", "poisson"])
 
 
-@dataclass
-class Wav2Vec2Config(FairseqDataclass):
-    extractor_mode: EXTRACTOR_MODE_CHOICES = field(
-        default="default",
-        metadata={
-            "help": "mode for feature extractor. default has a single group norm with d "
-            "groups in the first conv block, whereas layer_norm has layer norms in "
-            "every block (meant to use with normalize=True)"
-        },
-    )
-    encoder_layers: int = field(
-        default=12, metadata={"help": "num encoder layers in the transformer"}
-    )
-    encoder_embed_dim: int = field(
-        default=768, metadata={"help": "encoder embedding dimension"}
-    )
-    encoder_ffn_embed_dim: int = field(
-        default=3072, metadata={"help": "encoder embedding dimension for FFN"}
-    )
-    encoder_attention_heads: int = field(
-        default=12, metadata={"help": "num encoder attention heads"}
-    )
-    activation_fn: ChoiceEnum(utils.get_available_activation_fns()) = field(
-        default="gelu", metadata={"help": "activation function to use"}
-    )
-
-    # dropouts
-    dropout: float = field(
-        default=0.1, metadata={"help": "dropout probability for the transformer"}
-    )
-    attention_dropout: float = field(
-        default=0.1, metadata={"help": "dropout probability for attention weights"}
-    )
-    activation_dropout: float = field(
-        default=0.0, metadata={"help": "dropout probability after activation in FFN"}
-    )
-    encoder_layerdrop: float = field(
-        default=0.0, metadata={"help": "probability of dropping a tarnsformer layer"}
-    )
-    dropout_input: float = field(
-        default=0.0,
-        metadata={"help": "dropout to apply to the input (after feat extr)"},
-    )
-    dropout_features: float = field(
-        default=0.0,
-        metadata={"help": "dropout to apply to the features (after feat extr)"},
-    )
-
-    final_dim: int = field(
-        default=0,
-        metadata={
-            "help": "project final representations and targets to this many dimensions."
-            "set to encoder_embed_dim is <= 0"
-        },
-    )
-    layer_norm_first: bool = field(
-        default=False, metadata={"help": "apply layernorm first in the transformer"}
-    )
-    conv_feature_layers: str = field(
-        default="[(512, 10, 5)] + [(512, 3, 2)] * 4 + [(512,2,2)] + [(512,2,2)]",
-        metadata={
-            "help": "string describing convolutional feature extraction layers in form of a python list that contains "
-            "[(dim, kernel_size, stride), ...]"
-        },
-    )
-    conv_bias: bool = field(
-        default=False, metadata={"help": "include bias in conv encoder"}
-    )
-    logit_temp: float = field(
-        default=0.1, metadata={"help": "temperature to divide logits by"}
-    )
-    quantize_targets: bool = field(
-        default=True, metadata={"help": "use quantized targets"}
-    )
-    quantize_input: bool = field(
-        default=False, metadata={"help": "use quantized inputs"}
-    )
-    same_quantizer: bool = field(
-        default=False, metadata={"help": "use same quantizer for inputs and targets"}
-    )
-    target_glu: bool = field(
-        default=False, metadata={"help": "adds projection + glu to targets"}
-    )
-    feature_grad_mult: float = field(
-        default=1.0, metadata={"help": "multiply feature extractor var grads by this"}
-    )
-    latent_vars: int = field(
-        default=320,
-        metadata={"help": "number of latent variables V in each group of the codebook"},
-    )
-    latent_groups: int = field(
-        default=2,
-        metadata={"help": "number of groups G of latent variables in the codebook"},
-    )
-    latent_dim: int = field(
-        default=0,
-        metadata={
-            "help": "if > 0, uses this dimensionality for latent variables. "
-            "otherwise uses final_dim / latent_groups"
-        },
-    )
-
-    # masking
-    mask_length: int = field(default=10, metadata={"help": "mask length"})
-    mask_prob: float = field(
-        default=0.65, metadata={"help": "probability of replacing a token with mask"}
-    )
-    mask_selection: MASKING_DISTRIBUTION_CHOICES = field(
-        default="static", metadata={"help": "how to choose mask length"}
-    )
-    mask_other: float = field(
-        default=0,
-        metadata={
-            "help": "secondary mask argument (used for more complex distributions), "
-            "see help in compute_mask_indices"
-        },
-    )
-    no_mask_overlap: bool = field(
-        default=False, metadata={"help": "whether to allow masks to overlap"}
-    )
-    mask_min_space: int = field(
-        default=1,
-        metadata={"help": "min space between spans (if no overlap is enabled)"},
-    )
-
-    # channel masking
-    mask_channel_length: int = field(
-        default=10, metadata={"help": "length of the mask for features (channels)"}
-    )
-    mask_channel_prob: float = field(
-        default=0.0, metadata={"help": "probability of replacing a feature with 0"}
-    )
-    mask_channel_selection: MASKING_DISTRIBUTION_CHOICES = field(
-        default="static",
-        metadata={"help": "how to choose mask length for channel masking"},
-    )
-    mask_channel_other: float = field(
-        default=0,
-        metadata={
-            "help": "secondary mask argument (used for more complex distributions), "
-            "see help in compute_mask_indicesh"
-        },
-    )
-    no_mask_channel_overlap: bool = field(
-        default=False, metadata={"help": "whether to allow channel masks to overlap"}
-    )
-    mask_channel_min_space: int = field(
-        default=1,
-        metadata={"help": "min space between spans (if no overlap is enabled)"},
-    )
-
-    # negative selection
-    num_negatives: int = field(
-        default=100,
-        metadata={"help": "number of negative examples from the same sample"},
-    )
-    negatives_from_everywhere: bool = field(
-        default=False,
-        metadata={"help": "sample negatives from everywhere, not just masked states"},
-    )
-    cross_sample_negatives: int = field(
-        default=0, metadata={"help": "number of negative examples from the any sample"}
-    )
-    codebook_negatives: int = field(
-        default=0, metadata={"help": "number of negative examples codebook"}
-    )
-
-    # positional embeddings
-    conv_pos: int = field(
-        default=128,
-        metadata={"help": "number of filters for convolutional positional embeddings"},
-    )
-    conv_pos_groups: int = field(
-        default=16,
-        metadata={"help": "number of groups for convolutional positional embedding"},
-    )
-
-    latent_temp: Tuple[float, float, float] = field(
-        default=(2, 0.5, 0.999995),
-        metadata={
-            "help": "temperature for latent variable sampling. "
-            "can be tuple of 3 values (start, end, decay)"
-        },
-    )
-
-
 #@register_model("wav2vec2", dataclass=Wav2Vec2Config)
+#@hydra.main(config_pat="config")
 class Wav2Vec2Model(BaseFairseqModel):
     def __init__(self, cfg: Wav2Vec2Config):
         super().__init__()
         self.cfg = cfg
 
         feature_enc_layers = eval(cfg.conv_feature_layers)
-        self.embed = 384 #feature_enc_layers[-1][0]
+        
+        self.embed = cfg.conv_feature_output_channels
 
         '''self.feature_extractor = ConvFeatureExtractionModel(
             conv_layers=feature_enc_layers,
             dropout=0.0,
             mode=cfg.extractor_mode,
             conv_bias=cfg.conv_bias,
-        )'''
-        self.feature_extractor = Encoder(161,configE())
+        )
+        '''
+        self.feature_extractor_pre = Pre(cfg.conv_feature_input_channels,configPre())
+        self.feature_extractor = Encoder(configPre()[-1]['out_channels'],configE())
 
         self.post_extract_proj = (
             nn.Linear(self.embed, cfg.encoder_embed_dim)
@@ -306,7 +127,7 @@ class Wav2Vec2Model(BaseFairseqModel):
             torch.FloatTensor(cfg.encoder_embed_dim).uniform_()
         )
 
-        self.encoder = Decoder(768,configDecoder())#TransformerEncoder(cfg)
+        self.encoder = Decoder(cfg.encoder_embed_dim,configDec())
         self.layer_norm = LayerNorm(self.embed)
 
         self.target_glu = None
@@ -428,14 +249,9 @@ class Wav2Vec2Model(BaseFairseqModel):
 
     def compute_preds(self, x, y, negatives):
 
-
-        print("negatives", negatives.shape)
-
         neg_is_pos = (y == negatives).all(-1)
         y = y.unsqueeze(0)
         targets = torch.cat([y, negatives], dim=0)
-
-        print("targets", targets.shape)
 
         logits = torch.cosine_similarity(x.float(), targets.float(), dim=-1).type_as(x)
 
@@ -448,31 +264,25 @@ class Wav2Vec2Model(BaseFairseqModel):
 
     def forward(self, source, WIDTHS, padding_mask=None, mask=True, features_only=False):
 
-        print("Input shape: ", source.shape)
-
         if self.feature_grad_mult > 0:
-            features, lens = self.feature_extractor(source, WIDTHS)
+            
+            features, lens = self.feature_extractor_pre(source, WIDTHS)
+            features, lens = self.feature_extractor(features, lens)
             if self.feature_grad_mult != 1.0:
                 features = GradMultiply.apply(features, self.feature_grad_mult)
         else:
             with torch.no_grad():
                 features = self.feature_extractor(source)
 
-        print("Final shape after CONV: ", features.shape)
-
         features_pen = features.float().pow(2).mean()
 
         features = features.transpose(1, 2)
-        print("Shape after transpose: ", features.shape)
 
         features = self.layer_norm(features)
-
-        print("Shape after layer norm: ", features.shape)
         
         unmasked_features = features.clone()
 
         if padding_mask is not None:
-            print("Padding done")
             extra = padding_mask.size(1) % features.size(1)
             if extra > 0:
                 padding_mask = padding_mask[:, :-extra]
@@ -481,7 +291,6 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         if self.post_extract_proj is not None:
             features = self.post_extract_proj(features)
-            print("Shape after post extract projection: ", features.shape)
 
         features = self.dropout_input(features)
         unmasked_features = self.dropout_features(unmasked_features)
@@ -492,7 +301,6 @@ class Wav2Vec2Model(BaseFairseqModel):
         curr_temp = None
 
         if self.input_quantizer:
-            print("Input quantized!")
             q = self.input_quantizer(features, produce_targets=False)
             features = q["x"]
             num_vars = q["num_vars"]
@@ -501,9 +309,10 @@ class Wav2Vec2Model(BaseFairseqModel):
             curr_temp = q["temp"]
             features = self.project_inp(features)
 
+        x = self.encoder(features, lens)#, padding_mask=padding_mask)
+
         if mask:
-            print("Masks found!!!")
-            x, mask_indices = self.apply_mask(features, padding_mask)
+            x, mask_indices = self.apply_mask(x, padding_mask)
             if mask_indices is not None:
                 y = unmasked_features[mask_indices].view(
                     unmasked_features.size(0), -1, unmasked_features.size(-1)
@@ -516,21 +325,11 @@ class Wav2Vec2Model(BaseFairseqModel):
             y = unmasked_features
             mask_indices = None
 
-        print("Feature shape after masking : ",x.shape)
-        print("Unmaksed shape after masking : ",y.shape)
-        print("Masking shape after masking : ",mask_indices.shape)
-        #print("Masking inices : ",mask_indices)
-
-        x = self.encoder(x, lens)#, padding_mask=padding_mask)
-
-        print("Feature shape after encoding : ",x.shape)
-
         if features_only:
             return {"x": x, "padding_mask": padding_mask}
         
 
         if self.quantizer:
-            print("Target quantized!!!")
             q = self.quantizer(y, produce_targets=False)
             y = q["x"]
             num_vars = q["num_vars"]
@@ -538,11 +337,7 @@ class Wav2Vec2Model(BaseFairseqModel):
             prob_ppl = q["prob_perplexity"]
             curr_temp = q["temp"]
 
-            print("Tagret shape after quantization: ",y.shape)
-
             y = self.project_q(y)
-
-            print("Tagret shape after quantization projection: ",y.shape)
 
             if self.negatives_from_everywhere:
 
@@ -551,10 +346,7 @@ class Wav2Vec2Model(BaseFairseqModel):
                 negs = self.project_q(negs)
 
             else:
-                print("negative sample from here!!")
                 negs, _ = self.sample_negatives(y, y.size(1))
-
-                print("negs", negs.shape)
 
             if self.codebook_negatives > 0:
                 cb_negs = self.quantizer.sample_from_codebook(
@@ -576,17 +368,11 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         x = x[mask_indices].view(x.size(0), -1, x.size(-1))
 
-        print("Shape after filter encoder outputs for only masked indices: ", x.shape)
-
         if self.target_glu:
-            print("GLU done!!")
             y = self.target_glu(y)
             negs = self.target_glu(negs)
 
         x = self.final_proj(x)
-
-        print("Shape mask filtered output projection x: ", x.shape)
-        print("Shape mask filtered output projection y: ", y.shape)
 
         x = self.compute_preds(x, y, negs)
 
@@ -641,40 +427,6 @@ class Wav2Vec2Model(BaseFairseqModel):
         self.target_glu = None
         self.final_proj = None
 
-def prepare_info(layers):
-    hyperparameters = ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','batch_norm']
-    info = []
-
-    for l in layers:
-        dummy = {}
-        for r,hyper in enumerate(hyperparameters): 
-            dummy[hyper] = l[r]
-        info.append(dummy)
-
-    return info
-    
-def configDecoder(labels=29):
-    layers = [
-        # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','nonlinear']
-        #[1,29,1,768,0.4,2,True],
-        #[1,1,1,768,0.4,1,True],
-        [2,23,1,512,0.2,1,True],
-        [2,23,1,768,0.2,1,True],
-        #[1,1,1,labels,0.0,1,False],
-    ]
-
-    return prepare_info(layers)
-def configE():
-    layers = [
-        # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','batchnorm']
-        [2,11,1,256,0.2,1,True],
-        [2,11,1,384,0.2,1,True],
-        #[5,11,1,512,0.2,1,True],
-        #[5,11,1,640,0.3,1,True],
-        #[5,11,1,768,0.3,1,True],
-    ]
-
-    return prepare_info(layers)
 
 if __name__ == '__main__':
 
