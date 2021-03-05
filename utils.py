@@ -100,12 +100,12 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
         # Forward pass
         if not args.train_asr:
             # Forward pass
-            x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
-            z, updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-            m, updated_lengths = models['forget_net'][0](x_,updated_lengths) # Forget network
+            x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
+            z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
+            m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
             z_ = z * m # Forget Operation
             discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
-            asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
+            asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
         else:
             # Forward pass                  
             x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
