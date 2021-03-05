@@ -95,7 +95,7 @@ if __name__ == '__main__':
     if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_rank
     version_ = args.version
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.enabled = True
+    torch.backends.cudnn.enabled = False#True
     accent_dict = get_accents(args.train_manifest)
     accent = list(accent_dict.values())
 
@@ -395,7 +395,7 @@ if __name__ == '__main__':
                     disc_target = torch.tensor(1/len(accent)) * torch.ones(discriminator_out.shape[0], len(accent)).to(device)
                     discriminator_loss = dis_kl_loss(nn.functional.log_softmax(discriminator_out), disc_target) * args.beta
                 p_d_loss = discriminator_loss.item()    
-                
+        
                 mask_regulariser_loss = (m * (1-m)).mean() * args.gamma
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
