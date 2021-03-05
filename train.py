@@ -285,7 +285,7 @@ if __name__ == '__main__':
                     decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                     asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
                     # Loss                
-                    asr_out = asr_out.transpose(0, 1)  # TxNxH
+                    asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
                     asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
                     decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
                     loss = asr_loss + decoder_loss
