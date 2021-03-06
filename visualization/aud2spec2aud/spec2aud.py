@@ -9,6 +9,7 @@ import os
 from tempfile import NamedTemporaryFile
 import matplotlib.pyplot as plt
 import argparse
+import sox
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--mag-path',type=str,help='Path to the spectogram magnitude')
@@ -29,9 +30,9 @@ def magphase_to_spect(mag,phase):
     D = np.multiply(mag,phase)
     return D
 
-def spect_to_aud(D,hop_length,win_length,window,sample_rate,save_path):
+def spect_to_aud(D,hop_length,win_length,window,sample_rate,save_path,tfm):
     reconstructed_audio = librosa.istft(D,hop_length=hop_length,win_length=win_length,window=window)
-    write(save_path,sample_rate,reconstructed_audio)
+    tfm.build_file(input_array=reconstructed_audio,sample_rate_in=sample_rate,output_filepath=save_path)
 
 if __name__ == "__main__":
     mag_path = args.mag_path
@@ -47,4 +48,6 @@ if __name__ == "__main__":
     mag = np.load(mag_path)
     phase = np.load(phase_path)
     D = magphase_to_spect(mag,phase)
-    spect_to_aud(D,hop_length,win_length,window,sample_rate,save_path+mag_path.split("/")[-1][:-4]+".wav")
+    tfm = sox.Transformer()
+    tfm.convert(samplerate=16000,bitdepth=16,n_channels=1)
+    spect_to_aud(D,hop_length,win_length,window,sample_rate,save_path+mag_path.split("/")[-1][:-4]+".wav",tfm)
