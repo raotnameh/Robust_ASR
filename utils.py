@@ -27,28 +27,20 @@ def check_loss(loss, loss_value):
     return loss_valid, error
 
 
-def load_model_components(device, model_path, forget, discriminator):
-    package = torch.load(model_path, map_location="cpu")
+def load_model_components(device, args):
+    package = torch.load(args.model_path, map_location="cpu")
     models = package['models']
     encoder_model, asr_model = models['encoder'][0], models['predictor'][0]
-    forget_model = None if ('forget_net' not in models or not forget) else models['forget_net'][0]
-    disc_model = None if ('discriminator' not in models or not discriminator) else models['discriminator'][0]
+    decoder = models['decoder'] if args.use_decoder else None:
+    forget_model = models['forget_net'][0] if args.forget_net else None:
+    disc_model = models['discriminator'][0] if args.disc else None:
 
-    model_components = [encoder_model, forget_model, disc_model, asr_model]
+    model_components = [encoder_model, forget_model, disc_model, asr_model, decoder]
     for i in range(len(model_components)):
-        if model_components[i] is None:
-            continue
-        model_components[i].eval()
-        model_components[i].to(device)
-    return model_components, package['accent_dict'] # e, f, d, asr
-
-def load_model(device, model_path, use_half):
-    model = DeepSpeech.load_model(model_path)
-    model.eval()
-    model = model.to(device)
-    if use_half:
-        model = model.half()
-    return model
+        if model_components[i] is not None:
+            model_components[i].eval()
+            model_components[i].to(device)
+    return model_components, package['accent_dict'], package # e, f, d, asr
 
 
 class Decoder_loss():

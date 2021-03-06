@@ -126,24 +126,11 @@ if __name__ == '__main__':
     poor_cer_list, best_wer, best_cer = [], None, None
     d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch, start_iter = 0, 0, 0, 0, 0
     eps = 0.0000000001 # epsilon value
-    
-    #Loading the labels
-    with open(args.labels_path) as label_file:
-        labels = str(''.join(json.load(label_file)))
-
-    #Creating the configuration apply to the audio
-    audio_conf = dict(sample_rate=args.sample_rate,
-                        window_size=args.window_size,
-                        window_stride=args.window_stride,
-                        window=args.window,
-                        noise_dir=args.noise_dir,
-                        noise_prob=args.noise_prob,
-                        noise_levels=(args.noise_min, args.noise_max))
 
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
         models = package['models'] 
-        version_, start_iter = package['version'], package['start_iter']
+        labels, audio_conf, version_, start_iter = package['labels'], package['audio_conf'], package['version'], package['start_iter']
         
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
@@ -171,9 +158,21 @@ if __name__ == '__main__':
             version_ = args.version
             for i in models:
                 models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-
     else:
         a = ""
+        #Loading the labels
+        with open(args.labels_path) as label_file:
+            labels = str(''.join(json.load(label_file)))
+
+        #Creating the configuration apply to the audio
+        audio_conf = dict(sample_rate=args.sample_rate,
+                            window_size=args.window_size,
+                            window_stride=args.window_stride,
+                            window=args.window,
+                            noise_dir=args.noise_dir,
+                            noise_prob=args.noise_prob,
+                            noise_levels=(args.noise_min, args.noise_max))
+        
         models = {} # All the models with their loss and optimizer are saved in this dict
         
         # Preprocessing
@@ -227,22 +226,25 @@ if __name__ == '__main__':
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
                                        spec_augment=args.spec_augment)
-    disc_train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
+    if not args.train_asr: 
+        disc_train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
                                        spec_augment=args.spec_augment)
     test_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.val_manifest, labels=labels,
                                       normalize=True, speed_volume_perturb=False, spec_augment=False)
 
     train_sampler = BucketingSampler(train_dataset, batch_size=args.batch_size)
-    disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_size)
+    if not args.train_asr: 
+        disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_size)
 
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler)
-    disc_train_loader = AudioDataLoader(disc_train_dataset,
+    if not args.train_asr: 
+        disc_train_loader = AudioDataLoader(disc_train_dataset,
                                    num_workers=args.num_workers, batch_sampler=disc_train_sampler)
     
-    disc_train_sampler.shuffle(start_epoch)
-    disc_ = iter(disc_train_loader)
+        disc_train_sampler.shuffle(start_epoch)
+        disc_ = iter(disc_train_loader)
 
     test_loader = AudioDataLoader(test_dataset, batch_size=args.batch_size,
                                   num_workers=args.num_workers)
@@ -271,7 +273,7 @@ if __name__ == '__main__':
             inputs = inputs.to(device)
 
             if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
-                package = {'models': models , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
+                package = {'models': models , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
             
             if args.train_asr: # Only training the ASR component
@@ -455,11 +457,11 @@ if __name__ == '__main__':
         if best_wer is None or best_wer > wer:
             best_wer = wer
             print("Updating the final model!")
-            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
             torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
             
         if args.checkpoint:
-            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
+            package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
             torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
 
         # Exiting criteria
