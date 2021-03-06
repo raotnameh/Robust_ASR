@@ -3,7 +3,7 @@
 
 To run aud2spec.py, run the following command-
 
-`python aud2spec.py --audio-path [input audio file path] -save-path [spectogram save directory]`
+`python aud2spec.py --audio-path [input audio file path] --mag-path [directory to save magnitude of spectogram] --phase-path [directory to save phase of spectogram]`
 
 You can also add addition arguments like `--window-size`, `--window-stride` , `--sample-rate`.
 
