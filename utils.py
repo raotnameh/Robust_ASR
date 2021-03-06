@@ -30,12 +30,12 @@ def check_loss(loss, loss_value):
 def load_model_components(device, args):
     package = torch.load(args.model_path, map_location="cpu")
     models = package['models']
-    encoder_model, asr_model = models['encoder'][0], models['predictor'][0]
-    decoder = models['decoder'] if args.use_decoder else None:
-    forget_model = models['forget_net'][0] if args.forget_net else None:
-    disc_model = models['discriminator'][0] if args.disc else None:
+    pre, encoder_model, asr_model = models['preprocessing'][0], models['encoder'][0], models['predictor'][0]
+    decoder = models['decoder'] if args.use_decoder else None
+    forget_model = models['forget_net'][0] if args.forget_net else None
+    disc_model = models['discriminator'][0] if args.disc else None
 
-    model_components = [encoder_model, forget_model, disc_model, asr_model, decoder]
+    model_components = [encoder_model, forget_model, disc_model, asr_model, decoder, pre]
     for i in range(len(model_components)):
         if model_components[i] is not None:
             model_components[i].eval()

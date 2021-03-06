@@ -131,7 +131,10 @@ if __name__ == '__main__':
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
         models = package['models'] 
         labels, audio_conf, version_, start_iter = package['labels'], package['audio_conf'], package['version'], package['start_iter']
-        
+        audio_conf['noise_dir'] = args.noise_dir
+        audio_conf['noise_prob'] = args.noise_prob
+        audio_conf['noise_levels'] = (args.noise_min, args.noise_max)
+
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
         else: 
@@ -163,7 +166,6 @@ if __name__ == '__main__':
         #Loading the labels
         with open(args.labels_path) as label_file:
             labels = str(''.join(json.load(label_file)))
-
         #Creating the configuration apply to the audio
         audio_conf = dict(sample_rate=args.sample_rate,
                             window_size=args.window_size,
@@ -172,7 +174,7 @@ if __name__ == '__main__':
                             noise_dir=args.noise_dir,
                             noise_prob=args.noise_prob,
                             noise_levels=(args.noise_min, args.noise_max))
-        
+
         models = {} # All the models with their loss and optimizer are saved in this dict
         
         # Preprocessing

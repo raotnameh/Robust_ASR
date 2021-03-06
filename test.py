@@ -28,14 +28,17 @@ parser.add_argument('--use-decoder' , action='store_true', required=False, help=
 parser.add_argument('--decoder', default='greedy', help='type of decoder to use.')
 
 # model compnents: e, f, d, asr
-def forward_call(model_components, inputs, inputs_sizes): 
+def forward_call(model_components, inputs, input_sizes, device): 
+    # preprocessing pass
+    x_, updated_lengths = model_components[5](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
     # encoder pass.
-    z, updated_lengths = model_components[0](inputs, inputs_sizes) 
+    z, updated_lengths = model_components[0](x_, updated_lengths) 
     a = z
-    decoder_out = model_components[4](z, updated_lengths) if model_components[4] is not None else None:
+    # decoder pass
+    decoder_out = model_components[4](z, updated_lengths) if model_components[4] is not None else None
     # forget net forward pass.
     if model_components[1] is not None: 
-        m = model_components[1](inputs, inputs_sizes)
+        m = model_components[1](x_, updated_lengths)
         z = z * m
     else: 
         m = None
@@ -71,7 +74,7 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
             inputs = inputs.to(device)
             
             # Forward pass
-            asr_out, asr_out_sizes, disc_out, decoder_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes.type(torch.LongTensor).to(device))
+            asr_out, asr_out_sizes, disc_out, decoder_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes, device)
             
             #saving z and z_
             if args.save_representation:
@@ -151,9 +154,9 @@ if __name__ == '__main__':
     device = torch.device(f"cuda:{args.gpu_rank}" if args.cuda else "cpu")
 
     model_components, accent_dict, package = load_model_components(device, args)
-    if args.forget:
+    if args.forget_net:
         assert model_components[1] is not None, "forget net not found in checkpoint"
-    if args.discriminate:
+    if args.disc:
         assert model_components[2] is not None, "discriminate net not found in checkpoint"
     print("Loaded models successfully...")
 
