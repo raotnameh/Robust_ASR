@@ -7,7 +7,7 @@ import numpy as np
 from data.data_loader import SpectrogramDataset, AudioDataLoader, accent
 from decoder import GreedyDecoder
 from utils import load_model_components
-from opts import add_decoder_args, add_inference_args
+from opts import add_decoder_args
 
 parser = argparse.ArgumentParser(description='DeepSpeech transcription')
 parser = add_decoder_args(parser)
@@ -46,7 +46,7 @@ def forward_call(model_components, inputs, input_sizes, device):
     disc_out = model_components[2](z) if model_components[2] is not None else None # discrmininator is present or not
     # asr forward pass.
     asr_out, asr_out_sizes = model_components[3](z, updated_lengths)
-    return asr_out, asr_out_sizes, disc_out, decoder_out, a, z, updated_lengths, m
+    return asr_out.softmax(2).float(), asr_out_sizes, disc_out, decoder_out, a, z, updated_lengths, m
 
 
 def evaluate(test_loader, accent_dict, device, model_components, target_decoder, decoder, args):
@@ -75,7 +75,6 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
             
             # Forward pass
             asr_out, asr_out_sizes, disc_out, decoder_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes, device)
-            
             #saving z and z_
             if args.save_representation:
                 dict_z.append([z.cpu(),accents,updated_lengths]) 
@@ -92,12 +91,16 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
             decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
             target_strings = decoder.convert_to_strings(split_targets)
             
+            # print(decoded_output) 
+            # print(target_strings)
+            # exit()
             if args.save_output is not None:
                 # add output to data array, and continue
                 output_data.append((asr_out.cpu(), asr_out_sizes.cpu(), target_strings))
 
             for x in range(len(target_strings)):
                 transcript, reference = decoded_output[x][0], target_strings[x][0]
+                # print(transcript, reference)
                 wer_inst = target_decoder.wer(transcript, reference)
                 cer_inst = target_decoder.cer(transcript, reference)
                 total_wer += wer_inst

@@ -65,7 +65,6 @@ def decode_dataset(params):
 
     return [lm_alpha, lm_beta, wer * 100, cer * 100]
 
-
 if __name__ == '__main__':
     p = Pool(args.num_workers, init, [args.beam_width, labels.index('_'), args.lm_path])
 
