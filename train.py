@@ -141,7 +141,11 @@ if __name__ == '__main__':
                 del models['forget_net']
                 del models['discriminator']
             except: pass
-
+        if args.lr: 
+            for i in models:
+                for g in models[i][-1].param_groups:
+                    g['lr'] = args.lr
+            print('starting learning rate is: {lr:.6f}'.format(lr=g['lr']))
         if not args.finetune: # If continuing training after the last epoch.
             start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
@@ -215,7 +219,7 @@ if __name__ == '__main__':
         print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
         # Printing the parameters of all the different modules 
         [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
-        print(f"Total number pof parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
+        print(f"Total number of parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
         print(f"Initial learning rate: {print(models['encoder'][-1].param_groups[0]['lr'])}")
 
     # Modules to gpu

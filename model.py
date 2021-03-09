@@ -5,21 +5,6 @@ from torch.nn.parameter import Parameter
 from collections import OrderedDict
 
 
-# model = torch.nn.Sequential(
-#     collections.OrderedDict(
-#         [
-#             ("conv1", torch.nn.Conv2d(1, 20, 5)),
-#             ("relu1", torch.nn.ReLU()),
-#             ("conv2", torch.nn.Conv2d(20, 64, 5)),
-#             ("relu2", torch.nn.ReLU()),
-#         ]
-#     )
-# )
-
-# for name, param in model.named_parameters():
-#     print(name)
-
-
 class block_B(nn.Module):
     def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2,batch_norm=True,name='pre'):
         super(block_B, self).__init__()
