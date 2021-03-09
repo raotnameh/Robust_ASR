@@ -19,7 +19,6 @@ pip install -r requirements.txt
 ```
 
 ## Training
-
 ### Dataset
 For dataset used for training and testing please refer to the section 4.1 in the [paper](https://arxiv.org/pdf/2011.12979.pdf).
 

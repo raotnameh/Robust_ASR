@@ -204,23 +204,6 @@ class block_Deco(nn.Module):
                 * (self.kernel_size - 1) - 1) // self.stride + 1)
 
 
-# self.modules_list = []
-#         for i in range(num_modules):
-#             if i==0:
-#                 stride_1, stride_2, input_channels = (2, 2), (2, 1), 1
-#             else:
-#                 stride_1, stride_2, input_channels = (1, 1), (1, 1), 32
-#             self.modules_list.append(
-#                                     nn.ModuleDict({
-#                                     'conv_1': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
-#                                     'batch_norm_1': nn.BatchNorm2d(32),
-#                                     'conv_2': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
-#                                     'batch_norm_2': nn.BatchNorm2d(32),
-#                                     })
-#                                     )
-#         self.modules_list = nn.ModuleList(self.modules_list)
-#         self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
-#         self.sigmoid = nn.Sigmoid()
 
 class Pre(nn.Module):
     def __init__(self,in_channels,info):

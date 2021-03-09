@@ -141,11 +141,11 @@ if __name__ == '__main__':
                 del models['forget_net']
                 del models['discriminator']
             except: pass
-        if args.lr: 
-            for i in models:
-                for g in models[i][-1].param_groups:
-                    g['lr'] = args.lr
-            print('starting learning rate is: {lr:.6f}'.format(lr=g['lr']))
+        # if args.lr: 
+        #     for i in models:
+        #         for g in models[i][-1].param_groups:
+        #             g['lr'] = args.lr
+        #     print('starting learning rate is: {lr:.6f}'.format(lr=g['lr']))
         if not args.finetune: # If continuing training after the last epoch.
             start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
@@ -498,7 +498,7 @@ if __name__ == '__main__':
                     g['lr'] = g['lr'] * args.learning_anneal
             print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
         dummy_lr = None
-        
+
         if not args.no_shuffle:
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
