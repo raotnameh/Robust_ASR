@@ -8,7 +8,7 @@ If you want decoding to support beam search with an optional language model, ins
 git clone --recursive https://github.com/parlance/ctcdecode.git
 cd ctcdecode && pip install .
 ```
-Install horovod for multi-gpu training. Make sure [nccl](https://developer.nvidia.com/nccl) is installed.
+Install horovod for multi-gpu training. Make sure [nccl](https://developer.nvidia.com/nccl) is installed. Install [opemmpi](https://edu.itp.phys.ethz.ch/hs12/programming_techniques/openmpi.pdf) if it is not. 
 ```
 HOROVOD_GPU_OPERATIONS=NCCL HOROVOD_WITH_PYTORCH=1 pip install horovod[pytorch]
 ```

@@ -94,7 +94,7 @@ if __name__ == '__main__':
     # args.fp16 = False # bugs with multi gpu training
     if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_rank
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.enabled = True#False
+    torch.backends.cudnn.enabled = True
     
     # Initializing horovod distributed training
     hvd.init()
