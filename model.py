@@ -2,9 +2,26 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
+from collections import OrderedDict
+
+
+# model = torch.nn.Sequential(
+#     collections.OrderedDict(
+#         [
+#             ("conv1", torch.nn.Conv2d(1, 20, 5)),
+#             ("relu1", torch.nn.ReLU()),
+#             ("conv2", torch.nn.Conv2d(20, 64, 5)),
+#             ("relu2", torch.nn.ReLU()),
+#         ]
+#     )
+# )
+
+# for name, param in model.named_parameters():
+#     print(name)
+
 
 class block_B(nn.Module):
-    def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2,batch_norm=True):
+    def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2,batch_norm=True,name='pre'):
         super(block_B, self).__init__()
 
         self.kernel_size = kernel_size
@@ -15,14 +32,20 @@ class block_B(nn.Module):
         self.layers = nn.ModuleList()
         if sub_blocks == 1:
             self.layers.append(
-                    nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False),
+                nn.Sequential(
+                    OrderedDict([
+                    (f'conv_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
+                    ])
+                ) 
             )
             if batch_norm:
                 self.layers.append(
                         nn.Sequential(
-                        nn.BatchNorm1d(out_channels),
-                        nn.ReLU(),
-                        nn.Dropout(p=dropout),
+                            OrderedDict([
+                                (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
+                                (f'relu_{name}', nn.ReLU()),
+                                (f'dropout_{name}', nn.Dropout(p=dropout)),
+                            ])
                     )
                 )
         else:
@@ -30,35 +53,46 @@ class block_B(nn.Module):
                 if i == 0:
                     self.layers.append(
                         nn.Sequential(
-                            nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False),
-                            nn.BatchNorm1d(out_channels),
-                            nn.ReLU(),
-                            nn.Dropout(p=dropout),
+                            OrderedDict([
+                            (f'conv_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
+                            (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
+                            (f'relu_{name}', nn.ReLU()),
+                            (f'dropout_{name}',nn.Dropout(p=dropout)),
+                            ])
                         )
                     )
                 else: 
                     self.layers.append(
                         nn.Sequential(
-                            nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False),
-                            nn.BatchNorm1d(out_channels),
-                            nn.ReLU(),
-                            nn.Dropout(p=dropout),
+                            OrderedDict([
+                            (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
+                            (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
+                            (f'relu_{name}', nn.ReLU()),
+                            (f'dropout_{name}',nn.Dropout(p=dropout)),
+                            ])
                         )
                     )
 
             self.layers.append(
                 nn.Sequential(
-                    nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False),
-                    nn.BatchNorm1d(out_channels),
+                    OrderedDict([
+                    (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
+                    (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
+                    ])
                 )
             )
             self.conv = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
-                nn.BatchNorm1d(out_channels),
+                OrderedDict([
+                    (f'conv_{name}', nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)),
+                    (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
+                ])
                 )        
             self.last = nn.Sequential(
-                nn.ReLU(),
-                nn.Dropout(p=dropout),)
+                OrderedDict([
+                    (f'relu_{name}', nn.ReLU()),
+                    (f'dropout_{name}', nn.Dropout(p=dropout)),
+                ])
+            )
     def forward(self, x, lengths):
         # y = x # 32,161,148 # (batch_size, channels, seq_len)
         if self.sub_blocks != 1: initial = self.conv(x) 
@@ -185,6 +219,24 @@ class block_Deco(nn.Module):
                 * (self.kernel_size - 1) - 1) // self.stride + 1)
 
 
+# self.modules_list = []
+#         for i in range(num_modules):
+#             if i==0:
+#                 stride_1, stride_2, input_channels = (2, 2), (2, 1), 1
+#             else:
+#                 stride_1, stride_2, input_channels = (1, 1), (1, 1), 32
+#             self.modules_list.append(
+#                                     nn.ModuleDict({
+#                                     'conv_1': nn.Conv2d(input_channels, 32, kernel_size=(41, 11), stride=stride_1, padding=(20, 5)),
+#                                     'batch_norm_1': nn.BatchNorm2d(32),
+#                                     'conv_2': nn.Conv2d(32, 32, kernel_size=(21, 11), stride=stride_2, padding=(10, 5)),
+#                                     'batch_norm_2': nn.BatchNorm2d(32),
+#                                     })
+#                                     )
+#         self.modules_list = nn.ModuleList(self.modules_list)
+#         self.hard_tanh = nn.Hardtanh(0, 20, inplace=True)
+#         self.sigmoid = nn.Sigmoid()
+
 class Pre(nn.Module):
     def __init__(self,in_channels,info):
         super(Pre, self).__init__()
@@ -194,7 +246,7 @@ class Pre(nn.Module):
             self.layers.append(
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],
+                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='pre',
                     )
             )
             in_channels = info[i]['out_channels']
@@ -214,7 +266,7 @@ class Encoder(nn.Module):
             self.layers.append(
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],
+                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='encoder'
                     )
             )
             in_channels = info[i]['out_channels']
@@ -234,7 +286,7 @@ class Predictor(nn.Module):
             self.layers.append(
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],
+                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='predictor'
                     )
             )
             in_channels = info[i]['out_channels']
