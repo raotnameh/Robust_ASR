@@ -490,11 +490,14 @@ if __name__ == '__main__':
         d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
 
         # anneal lr
+        dummy_lr = None
         for i in models:
             for g in models[i][-1].param_groups:
+                if dummy_lr is None: dummy_lr = g['lr']
                 if g['lr'] >= 1e-6:
                     g['lr'] = g['lr'] * args.learning_anneal
-            print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
+            print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
+        dummy_lr = None
         
         if not args.no_shuffle:
             print("Shuffling batches...")
