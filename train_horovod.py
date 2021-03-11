@@ -94,7 +94,7 @@ if __name__ == '__main__':
     # args.fp16 = False # bugs with multi gpu training
     if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_rank
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.enabled = True#False
+    torch.backends.cudnn.enabled = True
     
     # Initializing horovod distributed training
     hvd.init()
@@ -146,7 +146,7 @@ if __name__ == '__main__':
         audio_conf['noise_dir'] = args.noise_dir
         audio_conf['noise_prob'] = args.noise_prob
         audio_conf['noise_levels'] = (args.noise_min, args.noise_max)
-
+    
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
         else: 
@@ -157,6 +157,11 @@ if __name__ == '__main__':
             except: pass
 
         if not args.finetune: # If continuing training after the last epoch.
+            #  dummy = {i:models[i][-1] for i in models}
+            # for i in models:
+            #     models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True).load_state_dict(dummy[i])
+            # del dummy
+            
             start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
                 # start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
@@ -173,6 +178,7 @@ if __name__ == '__main__':
             version_ = args.version
             for i in models:
                 models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            
     else:
         a = ""
         #Loading the labels
@@ -293,8 +299,15 @@ if __name__ == '__main__':
         
             if hvd.rank() == 0 :
                 if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
-                    package = {'models': models , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
-                    torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
+                    save = {}
+                    for i in models.keys():
+                        save[i] = []
+                        save[i].append(models[i][0]) 
+                        save[i].append(models[i][1]) 
+                        save[i].append(models[i][2].state_dict()) 
+                    package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                    torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+                    del save
             
             if args.train_asr: # Only trainig the ASR component
                 try:    
@@ -493,10 +506,18 @@ if __name__ == '__main__':
                     save[i].append(models[i][2].state_dict()) 
                 package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+                del save
                 
             if args.checkpoint:
-                package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
-                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
+                save = {}
+                for i in models.keys():
+                    save[i] = []
+                    save[i].append(models[i][0]) 
+                    save[i].append(models[i][1]) 
+                    save[i].append(models[i][2].state_dict()) 
+                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+                del save
 
             # Exiting criteria
             terminate_train = False
