@@ -90,6 +90,8 @@ parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
 # Mixed precision training
 parser.add_argument('--fp16', action='store_true',
                     help='training using fp16')
+parser.add_argument('--using-new', action='store_true',
+                    help='using-new-weights')                    
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -158,11 +160,13 @@ if __name__ == '__main__':
                 del models['discriminator']
             except: pass
 
+        
         if not args.finetune: # If continuing training after the last epoch.
-            #  dummy = {i:models[i][-1] for i in models}
-            # for i in models:
-            #     models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True).load_state_dict(dummy[i])
-            # del dummy
+            if args.using_new:
+                dummy = {i:models[i][-1] for i in models}
+                for i in models:
+                    models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True).load_state_dict(dummy[i])
+                del dummy
             
             start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
@@ -180,7 +184,8 @@ if __name__ == '__main__':
             version_ = args.version
             for i in models:
                 models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-            
+        print(best_cer, best_wer, audio_conf,start_iter)
+        print("loaded models succesfully")
     else:
         a = ""
         #Loading the labels
