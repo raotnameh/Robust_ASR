@@ -234,7 +234,7 @@ if __name__ == '__main__':
             print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
              # Printing the parameters of all the different modules 
             [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
-            print(f"Total number pof parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
+            print(f"Total number of parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
             print(f"Initial learning rate: {print(models['encoder'][-1].param_groups[0]['lr'])}")
     
     #Creating the dataset
