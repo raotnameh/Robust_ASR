@@ -331,6 +331,15 @@ if __name__ == '__main__':
                             'Discriminator precision (micro) {pre: .3f}\t'
                             'Discriminator recall (micro) {rec: .3f}\t'
                             'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
+
+                    # Logging to tensorboard.
+                    writer.add_scalar('Validation/Average-WER', wer, epoch+1)
+                    writer.add_scalar('Validation/Average-CER', cer, epoch+1)
+                    writer.add_scalar('Validation/Discriminator-Accuracy', num/length *100, epoch+1)
+                    writer.add_scalar('Validation/Discriminator-Precision', weighted_precision, epoch+1)
+                    writer.add_scalar('Validation/Discriminator-Recall', weighted_recall, epoch+1)
+                    writer.add_scalar('Validation/Discriminator-F1', weighted_f1, epoch+1)
+                    
                 [i_[0].train() for i_ in models.values()] # putting all the models in training state
             if args.train_asr: # Only trainig the ASR component
                 # try:    
