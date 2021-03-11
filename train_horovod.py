@@ -310,41 +310,40 @@ if __name__ == '__main__':
                     del save
             
             if args.train_asr: # Only trainig the ASR component
-                try:    
-                    [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
-                    p_counter += 1
-                    with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
-                        # Forward pass                    
-                        x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
-                        z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-                        decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
-                        asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
-                        # Loss         
-                        asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
-                        asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
-                        decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
-                        loss = asr_loss + decoder_loss
+                # try:    
+                [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
+                p_counter += 1
+                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
+                    # Forward pass                    
+                    x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
+                    z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
+                    decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                    asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
+                    # Loss         
+                    asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
+                    asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
+                    decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
+                    loss = asr_loss + decoder_loss
 
-                    p_loss = loss.item()
-                    valid_loss, error = check_loss(loss, p_loss)
-                    if valid_loss:
-                        scaler.scale(loss).backward()
-                        for i_ in models.keys():
-                            models[i_][-1].synchronize()
-                            with models[i_][-1].skip_synchronize():
-                                scaler.step(models[i_][-1])
-                        scaler.update()
-                    else: 
-                        print(error)
-                        print("Skipping grad update")
-                        p_loss = 0.0
-                    
-                    p_avg_loss += p_loss
-                    if hvd.rank() == 0:
-                        # Logging to tensorboard.
-                        writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
-                        if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
-                except: print("pass")
+                p_loss = loss.item()
+                valid_loss, error = check_loss(loss, p_loss)
+                if valid_loss:
+                    scaler.scale(loss).backward()
+                    for i_ in models.keys():
+                        models[i_][-1].synchronize()
+                        with models[i_][-1].skip_synchronize():
+                            scaler.step(models[i_][-1])
+                    scaler.update()
+                else: 
+                    print(error)
+                    print("Skipping grad update")
+                    p_loss = 0.0
+                
+                p_avg_loss += p_loss
+                if hvd.rank() == 0:
+                    # Logging to tensorboard.
+                    writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
+                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
             
             if args.num_epochs > epoch: update_rule = 1
