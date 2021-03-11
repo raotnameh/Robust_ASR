@@ -56,6 +56,8 @@ parser.add_argument('--num-epochs', default=1, type=int,
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
 parser.add_argument('--disc-kl-loss', action='store_true',
                     help='use kl divergence loss for discriminator')
+parser.add_argument('--early-val', default=100, type=int,
+                    help='Doing an early validation step')
                     
 # Model arguements
 parser.add_argument('--update-rule', default=2, type=int,
@@ -141,11 +143,7 @@ if __name__ == '__main__':
                 del models['forget_net']
                 del models['discriminator']
             except: pass
-        # if args.lr: 
-        #     for i in models:
-        #         for g in models[i][-1].param_groups:
-        #             g['lr'] = args.lr
-        #     print('starting learning rate is: {lr:.6f}'.format(lr=g['lr']))
+
         if not args.finetune: # If continuing training after the last epoch.
             start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
@@ -163,6 +161,8 @@ if __name__ == '__main__':
             version_ = args.version
             for i in models:
                 models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        print(best_cer, best_wer, audio_conf,start_iter)
+        print("loaded models succesfully")
     else:
         a = ""
         #Loading the labels
@@ -218,10 +218,11 @@ if __name__ == '__main__':
         # Printing the models
         print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
         # Printing the parameters of all the different modules 
-        [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
-        print(f"Total number of parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
-        print(f"Initial learning rate: {print(models['encoder'][-1].param_groups[0]['lr'])}")
+    [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
+    print(f"Total number of parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
+    print(f"Initial learning rate: {print(print(models['encoder'][-1].param_groups[0]['lr']))}")
 
+    
     # Modules to gpu
     for i in models.keys():
         models[i][0].to(device)
@@ -279,10 +280,23 @@ if __name__ == '__main__':
             if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
                 package = {'models': models , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
-            
+
+            if i % args.early_val+1 == args.early_val and args.early_val < len(train_sampler):
+                with torch.no_grad():
+                    wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
+                [i_[0].train() for i_ in models.values()] # putting all the models in training state
+                print('Validation Summary Epoch: [{0}]\t'
+                        'Average WER {wer:.3f}\t'
+                        'Average CER {cer:.3f}\t'
+                        'Accuracy {acc_: .3f}\t'
+                        'Discriminator accuracy (micro) {acc: .3f}\t'
+                        'Discriminator precision (micro) {pre: .3f}\t'
+                        'Discriminator recall (micro) {rec: .3f}\t'
+                        'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
+                
             if args.train_asr: # Only training the ASR component
 
-                [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+                [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass                    
@@ -320,7 +334,7 @@ if __name__ == '__main__':
             for k in range(int(update_rule)): #updating the discriminator only  
                 
                 d_counter += 1
-                [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+                [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
 
                 # Data loading
                 try: inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
@@ -360,62 +374,59 @@ if __name__ == '__main__':
 
             # Random labels for adversarial learning of the predictor network                
             # Shuffling the elements of a list s.t. elements are not same at the same indices
-            try: 
-                dummy = [] 
-                for acce in accents:
-                    while True:
-                        d = random.randint(0,len(accent)-1)
-                        if acce != d:
-                            dummy.append(d)
-                            break
-                accents = torch.tensor(dummy).to(device)
+            dummy = [] 
+            for acce in accents:
+                while True:
+                    d = random.randint(0,len(accent)-1)
+                    if acce != d:
+                        dummy.append(d)
+                        break
+            accents = torch.tensor(dummy).to(device)
 
-                [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
-                p_counter += 1
-                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
-                    # Forward pass
-                    x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
-                    z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-                    decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
-                    m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
-                    z_ = z * m # Forget Operation
-                    discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
-                    asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
-                    # Loss                
-                    if not args.disc_kl_loss: discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.beta
-                    else: 
-                        disc_target = torch.tensor(1/len(accent)) * torch.ones(discriminator_out.shape[0], len(accent)).to(device)
-                        discriminator_loss = dis_kl_loss(nn.functional.log_softmax(discriminator_out), disc_target) * args.beta
-                    p_d_loss = discriminator_loss.item()    
-            
-                    mask_regulariser_loss = (m * (1-m)).mean() * args.gamma
-                    asr_out = asr_out.transpose(0, 1)  # TxNxH
-                    asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                    decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
-                    
-                loss = asr_loss + decoder_loss + mask_regulariser_loss
-                scaler.scale(discriminator_loss).backward(retain_graph=True)
-                models['encoder'][-1].zero_grad()
-
-                p_loss = loss.item()
-                valid_loss, error = check_loss(loss, p_loss)
-                if valid_loss:
-                    scaler.scale(loss).backward()
-                    for i_ in models.keys():
-                        if i_ == 'discriminator': 
-                            continue
-                        else: scaler.step(models[i_][-1])
-                    scaler.update()
-                    p_avg_loss += asr_loss.item()
-                    p_d_avg_loss += p_d_loss
+            [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
+            p_counter += 1
+            with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
+                # Forward pass
+                x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
+                z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
+                decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
+                z_ = z * m # Forget Operation
+                discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
+                asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
+                # Loss                
+                if not args.disc_kl_loss: discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.beta
                 else: 
-                    print(error)
-                    print("Skipping grad update")
-                    p_loss = 0.0
-                    p_avg_loss += 0.0
-                    p_d_avg_loss += 0.0
+                    disc_target = torch.tensor(1/len(accent)) * torch.ones(discriminator_out.shape[0], len(accent)).to(device)
+                    discriminator_loss = dis_kl_loss(nn.functional.log_softmax(discriminator_out), disc_target) * args.beta
+                p_d_loss = discriminator_loss.item()    
+        
+                mask_regulariser_loss = (m * (1-m)).mean() * args.gamma
+                asr_out = asr_out.transpose(0, 1)  # TxNxH
+                asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
+                decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
+                
+            loss = asr_loss + decoder_loss + mask_regulariser_loss
+            scaler.scale(discriminator_loss).backward(retain_graph=True)
+            models['encoder'][-1].zero_grad()
 
-            except: print("Pass")
+            p_loss = loss.item()
+            valid_loss, error = check_loss(loss, p_loss)
+            if valid_loss:
+                scaler.scale(loss).backward()
+                for i_ in models.keys():
+                    if i_ == 'discriminator': 
+                        continue
+                    else: scaler.step(models[i_][-1])
+                scaler.update()
+                p_avg_loss += asr_loss.item()
+                p_d_avg_loss += p_d_loss
+            else: 
+                print(error)
+                print("Skipping grad update")
+                p_loss = 0.0
+                p_avg_loss += 0.0
+                p_d_avg_loss += 0.0
                 
             # Logging to tensorboard and train.log.
             # writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.

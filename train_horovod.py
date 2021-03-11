@@ -57,6 +57,8 @@ parser.add_argument('--num-epochs', default=1, type=int,
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
 parser.add_argument('--disc-kl-loss', action='store_true',
                     help='use kl divergence loss for discriminator')
+parser.add_argument('--early-val', default=100, type=int,
+                    help='Doing an early validation step')                    
                     
 # Model arguements
 parser.add_argument('--update-rule', default=2, type=int,
@@ -300,15 +302,29 @@ if __name__ == '__main__':
             if hvd.rank() == 0 :
                 if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
                     save = {}
-                    for i in models.keys():
-                        save[i] = []
-                        save[i].append(models[i][0]) 
-                        save[i].append(models[i][1]) 
-                        save[i].append(models[i][2].state_dict()) 
-                    package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
-                    torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+                    for s_ in models.keys():
+                        save[s_] = []
+                        save[s_].append(models[s_][0]) 
+                        save[s_].append(models[s_][1]) 
+                        save[s_].append(models[s_][2].state_dict()) 
+                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                    torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
                     del save
             
+
+            if i % args.early_val+1 == args.early_val and args.early_val < len(train_sampler):
+                if hvd.rank() == 0 :
+                    with torch.no_grad():
+                        wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
+                    print('Validation Summary Epoch: [{0}]\t'
+                            'Average WER {wer:.3f}\t'
+                            'Average CER {cer:.3f}\t'
+                            'Accuracy {acc_: .3f}\t'
+                            'Discriminator accuracy (micro) {acc: .3f}\t'
+                            'Discriminator precision (micro) {pre: .3f}\t'
+                            'Discriminator recall (micro) {rec: .3f}\t'
+                            'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
+                [i_[0].train() for i_ in models.values()] # putting all the models in training state
             if args.train_asr: # Only trainig the ASR component
                 # try:    
                 [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
@@ -498,24 +514,24 @@ if __name__ == '__main__':
                 best_wer = wer
                 print("Updating the final model!")
                 save = {}
-                for i in models.keys():
-                    save[i] = []
-                    save[i].append(models[i][0]) 
-                    save[i].append(models[i][1]) 
-                    save[i].append(models[i][2].state_dict()) 
+                for s_ in models.keys():
+                    save[s_] = []
+                    save[s_].append(models[s_][0]) 
+                    save[s_].append(models[s_][1]) 
+                    save[s_].append(models[s_][2].state_dict()) 
                 package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
                 del save
                 
             if args.checkpoint:
                 save = {}
-                for i in models.keys():
-                    save[i] = []
-                    save[i].append(models[i][0]) 
-                    save[i].append(models[i][1]) 
-                    save[i].append(models[i][2].state_dict()) 
+                for s_ in models.keys():
+                    save[s_] = []
+                    save[s_].append(models[s_][0]) 
+                    save[s_].append(models[s_][1]) 
+                    save[s_].append(models[s_][2].state_dict()) 
                 package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
-                torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
                 del save
 
             # Exiting criteria
