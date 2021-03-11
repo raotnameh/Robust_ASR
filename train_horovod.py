@@ -163,9 +163,11 @@ if __name__ == '__main__':
         
         if not args.finetune: # If continuing training after the last epoch.
             if args.using_new:
+                print(f"using new")
                 dummy = {i:models[i][-1] for i in models}
                 for i in models:
-                    models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True).load_state_dict(dummy[i])
+                    models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+                    models[i][-1].load_state_dict(dummy[i])
                 del dummy
             
             start_epoch = package['start_epoch']  # Index start at 0 for training
