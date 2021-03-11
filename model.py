@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from collections import OrderedDict
-
+import numpy as np
 
 class block_B(nn.Module):
     def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2,batch_norm=True,name='pre'):
@@ -266,30 +266,50 @@ class Predictor(nn.Module):
         return x.permute(0,2,1), lengths # batch_size, seq_length,classes
 
 
+class disc_last(nn.Module):
+    def __init__(self,info,classes):
+        super(disc_last, self).__init__()
+        self.disc_last = nn.Sequential(
+                        OrderedDict([
+                            (f'adaptive_disc',nn.AdaptiveAvgPool1d(8)),
+                            (f"flatten_disc", nn.Flatten()),
+                            (f'linear_disc',torch.nn.Linear(info[-1]['out_channels']*8, classes)),
+                        ])
+        )
+
+    def forward(self,x,lengths):
+        return self.disc_last(x), lengths
+
 class Discriminator(nn.Module):
     def __init__(self,in_channels,info,classes):
         super(Discriminator, self).__init__()
 
-        self.layers = nn.ModuleList()
+        self.disc = nn.ModuleList()
         for i in range(len(info)):
-            self.layers.append(
+            self.disc.append(
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],
+                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='disc',
                     )
             )
             in_channels = info[i]['out_channels']
 
-        self.adaptive = nn.AdaptiveAvgPool1d(8)
-        self.linear = torch.nn.Linear(info[i]['out_channels']*8, classes)
+        self.disc.append(disc_last(info,classes))
+        # self.disc_adaptive = nn.Sequential(
+        #                 OrderedDict([
+        #                     (f'adaptive_disc',nn.AdaptiveAvgPool1d(8)),
+        #                     (f"flatten_disc", nn.Flatten()),
+        #                     (f'linear_disc',torch.nn.Linear(info[-1]['out_channels']*8, classes)),
+        #                 ])
+        # )
         
     def forward(self, x, lengths):
-        for i in range(len(self.layers)):
-            x, lengths = self.layers[i](x, lengths,)
-        x = self.adaptive(x)
-        x = torch.flatten(x,start_dim=1)
-        x = self.linear(x)
-        return x # batch_size, classes,seq_length
+        for i in range(len(self.disc)):
+            x, lengths = self.disc[i](x, lengths,)
+        # x = self.disc_adaptive(x)
+        # x = torch.flatten(x,start_dim=1)
+        # x = self.disc_linear(x)
+        return x # batch_size, classes,seq_length 
 
 
 class Decoder(nn.Module):

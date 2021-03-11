@@ -314,6 +314,9 @@ if __name__ == '__main__':
                     writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                     if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 except: 
+                    print(target_sizes, input_sizes)
+                    with open('fake.txt', "a") as f:
+                        f.write(f"{i}_{target_sizes.item()}\n")
                     # torch.save(asr_out,"asr_out.pth")
                     # torch.save(asr_out_sizes, "asr_out_sizes.pth")
                     # torch.save(targets, "targets.pth")

@@ -220,14 +220,9 @@ if __name__ == '__main__':
             # Weighted loss depending on the class count 
             disc_loss_weights = weights_(args, accent_dict).to(device)   
             dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights)
-            if args.disc_kl_loss: 
-                dis_kl_loss = nn.KLDivLoss(reduction = 'batchmean')
             models['discriminator'] = [discriminator, dis_loss, discriminator_optimizer]
 
-    # creating a separate dict for optimizers, will help in saving models later
-    optimizers = {k:v[-1] for k,v in models.items()}
-    
-    if hvd.rank() == 0: 
+    if hvd.rank() == 0:
         if not args.silent: 
             # Printing the models
             print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
@@ -277,8 +272,8 @@ if __name__ == '__main__':
     for i in models.keys():
         models[i][0].to(device)
         hvd.broadcast_parameters(models[i][0].state_dict(), root_rank=0)
-        hvd.broadcast_optimizer_state(optimizers[i], root_rank=0)
-        optimizers[i] = hvd.DistributedOptimizer(optimizers[i], named_parameters=models[i][0].named_parameters())
+        hvd.broadcast_optimizer_state(models[i][-1], root_rank=0)
+        models[i][-1] = hvd.DistributedOptimizer(models[i][-1], named_parameters=models[i][0].named_parameters())
 
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
     for epoch in range(start_epoch, args.epochs):
@@ -304,7 +299,7 @@ if __name__ == '__main__':
             
             if args.train_asr: # Only trainig the ASR component
                 try:    
-                    [m.zero_grad() for m in optimizers.values() if m is not None] #making graidents zero
+                    [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
                     p_counter += 1
                     with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
                         # Forward pass                    
@@ -323,9 +318,9 @@ if __name__ == '__main__':
                     if valid_loss:
                         scaler.scale(loss).backward()
                         for i_ in models.keys():
-                            optimizers[i_].synchronize()
-                            with optimizers[i_].skip_synchronize():
-                                scaler.step(optimizers[i_])
+                            models[i_][-1].synchronize()
+                            with models[i_][-1].skip_synchronize():
+                                scaler.step(models[i_][-1])
                         scaler.update()
                     else: 
                         print(error)
@@ -341,53 +336,53 @@ if __name__ == '__main__':
                 except: print("pass")
                 continue
             
-            if args.num_epochs > epoch: update_rule = 1
-            else: update_rule = args.update_rule
-            for k in range(int(update_rule)): #updating the discriminator only  
+            # if args.num_epochs > epoch: update_rule = 1
+            # else: update_rule = args.update_rule
+            # for k in range(int(update_rule)): #updating the discriminator only  
                 
-                d_counter += 1
-                [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+            #     d_counter += 1
+            #     [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
 
-                # Data loading
-                try: inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
-                except:
-                    disc_train_sampler.shuffle(start_epoch)
-                    disc_ = iter(disc_train_loader)
-                    inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
+            #     # Data loading
+            #     try: inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
+            #     except:
+            #         disc_train_sampler.shuffle(start_epoch)
+            #         disc_ = iter(disc_train_loader)
+            #         inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
 
-                input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
-                inputs_ = inputs_.to(device)
-                accents_ = torch.tensor(accents_).to(device)
-                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
-                    # Forward pass
-                    x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
-                    z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-                    m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
-                    z_ = z * m # Forget Operation
-                    discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
-                    # Loss             
-                    discriminator_loss = models['discriminator'][1](discriminator_out, accents_)
+            #     input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
+            #     inputs_ = inputs_.to(device)
+            #     accents_ = torch.tensor(accents_).to(device)
+            #     with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
+            #         # Forward pass
+            #         x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
+            #         z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
+            #         m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
+            #         z_ = z * m # Forget Operation
+            #         discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
+            #         # Loss             
+            #         discriminator_loss = models['discriminator'][1](discriminator_out, accents_)
+                
+            #     d_loss = discriminator_loss.item()
+            #     valid_loss, error = check_loss(discriminator_loss, d_loss)
+            #     if valid_loss:
+            #         scaler.scale(discriminator_loss).backward()
+            #         models['discriminator'][-1].synchronize()
+            #         with models['discriminator'][-1].skip_synchronize():
+            #             scaler.step(models['discriminator'][-1])
+            #         scaler.update()
+            #     else: 
+            #         print(error)
+            #         print("Skipping grad update")
+            #         d_loss = 0.0
 
-                d_loss = discriminator_loss.item()
-                valid_loss, error = check_loss(discriminator_loss, d_loss)
-                if valid_loss:
-                    scaler.scale(discriminator_loss).backward()
-                    optimizers['discriminator'].synchronize()
-                    with optimizers['discriminator'].skip_synchronize():
-                        scaler.step(optimizers['discriminator'])
-                    scaler.update()
-                else: 
-                    print(error)
-                    print("Skipping grad update")
-                    d_loss = 0.0
+            #     d_avg_loss += d_loss
+            #     if hvd.rank() == 0:
+            #         if not args.silent: print(f"Epoch: [{epoch+1}][{i+1,k+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
 
-                d_avg_loss += d_loss
-                if hvd.rank() == 0:
-                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1,k+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
-
-            if hvd.rank() == 0:
-                # Logging to tensorboard.
-                writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_avg_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
+            # if hvd.rank() == 0:
+            #     # Logging to tensorboard.
+            #     writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_avg_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
 
             # Random labels for adversarial learning of the predictor network                
             # Shuffling the elements of a list s.t. elements are not same at the same indices
@@ -401,8 +396,8 @@ if __name__ == '__main__':
             accents = torch.tensor(dummy).to(device)
 
             for i_ in models.keys():
-                optimizers[i_].synchronize()
-            [m.zero_grad() for m in optimizers.values() if m is not None] #making graidents zero
+                models[i_][-1].synchronize()
+            [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
             p_counter += 1
             
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
@@ -415,10 +410,7 @@ if __name__ == '__main__':
                 discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
                 # Loss                
-                if not args.disc_kl_loss: discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.beta
-                else: 
-                    disc_target = torch.tensor(1/len(accent)) * torch.ones(discriminator_out.shape[0], len(accent)).to(device)
-                    discriminator_loss = dis_kl_loss(nn.functional.log_softmax(discriminator_out), disc_target) * args.beta
+                discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.beta
                 p_d_loss = discriminator_loss.item()    
         
                 mask_regulariser_loss = (m * (1-m)).mean() * args.gamma
@@ -428,11 +420,11 @@ if __name__ == '__main__':
                 
             loss = asr_loss + decoder_loss + mask_regulariser_loss
             for i_ in models.keys():
-                optimizers[i_].synchronize()
+                models[i_][-1].synchronize()
             scaler.scale(discriminator_loss).backward(retain_graph=True)
             for i_ in models.keys():
-                optimizers[i_].synchronize()
-            optimizers['encoder'].zero_grad()
+                models[i_][-1].synchronize()
+            models['encoder'][-1].zero_grad()
 
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
@@ -440,9 +432,9 @@ if __name__ == '__main__':
                 scaler.scale(loss).backward()
                 for i_ in models.keys():
                         if i_ != 'discriminator':
-                            optimizers[i_].synchronize()
-                            with optimizers[i_].skip_synchronize():
-                                scaler.step(optimizers[i_])
+                            models[i_][-1].synchronize()
+                            with models[i_][-1].skip_synchronize():
+                                scaler.step(models[i_][-1])
                 scaler.update()
                 p_avg_loss += asr_loss.item()
                 p_d_avg_loss += p_d_loss
@@ -460,7 +452,7 @@ if __name__ == '__main__':
                 # writer.add_scalar('Train/Dummy-Discriminator-Per-Iteration-Loss', p_d_loss, len(train_sampler)*epoch+i+1) # Dummy Disctrimintaor loss in the current iteration.
                 writer.add_scalar('Train/Dummy-Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
                 if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,8)} ({round(p_d_avg_loss/p_counter,8)})") 
-                
+            
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
@@ -500,7 +492,13 @@ if __name__ == '__main__':
             if best_wer is None or best_wer > wer:
                 best_wer = wer
                 print("Updating the final model!")
-                package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                save = {}
+                for i in models.keys():
+                    save[i] = []
+                    save[i].append(models[i][0]) 
+                    save[i].append(models[i][1]) 
+                    save[i].append(models[i][2].state_dict()) 
+                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
                 
             if args.checkpoint:
@@ -519,17 +517,17 @@ if __name__ == '__main__':
                     terminate_train = True
             if terminate_train:
                 break
-        d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
+            d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
 
-        # anneal lr
-        dummy_lr = None
-        for i in models:
-            for g in models[i][-1].param_groups:
-                if dummy_lr is None: dummy_lr = g['lr']
-                if g['lr'] >= 1e-6:
-                    g['lr'] = g['lr'] * args.learning_anneal
-            print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
-        dummy_lr = None
+            # anneal lr
+            dummy_lr = None
+            for i in models:
+                for g in models[i][-1].param_groups:
+                    if dummy_lr is None: dummy_lr = g['lr']
+                    if g['lr'] >= 1e-6:
+                        g['lr'] = g['lr'] * args.learning_anneal
+                print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
+            dummy_lr = None
 
         if not args.no_shuffle:
             print("Shuffling batches...")
