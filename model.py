@@ -99,6 +99,7 @@ class block_B(nn.Module):
         del mask, idxs, max_len 
         return x, lengths
 
+
 class block_Deco(nn.Module):
     def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2, nonlinear=2, batch_norm = True):
         super(block_Deco, self).__init__()
@@ -225,6 +226,27 @@ class Pre(nn.Module):
             x, lengths = self.layers[i](x, lengths,)    
         return x, lengths
 
+class Forget(nn.Module):
+    def __init__(self,in_channels,info):
+        super(Forget, self).__init__()
+        
+        self.layers = nn.ModuleList()
+        for i in range(len(info)):
+            self.layers.append(
+                block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
+                    stride=info[i]['stride'], in_channels=in_channels,
+                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget'
+                    )
+            )
+            in_channels = info[i]['out_channels']
+
+    def forward(self, x, lengths):
+        for i in range(len(self.layers)):
+            # print(i, "-------",x.shape)
+            x, lengths = self.layers[i](x, lengths,)
+        return x, lengths 
+
+
 class Encoder(nn.Module):
     def __init__(self,in_channels,info):
         super(Encoder, self).__init__()
@@ -267,13 +289,13 @@ class Predictor(nn.Module):
 
 
 class disc_last(nn.Module):
-    def __init__(self,info,classes):
+    def __init__(self,info,classes,name='disc'):
         super(disc_last, self).__init__()
         self.disc_last = nn.Sequential(
                         OrderedDict([
-                            (f'adaptive_disc',nn.AdaptiveAvgPool1d(8)),
-                            (f"flatten_disc", nn.Flatten()),
-                            (f'linear_disc',torch.nn.Linear(info[-1]['out_channels']*8, classes)),
+                            (f'adaptive_{name}',nn.AdaptiveAvgPool1d(8)),
+                            (f"flatten_{name}", nn.Flatten()),
+                            (f'linear_{name}',torch.nn.Linear(info[-1]['out_channels']*8, classes)),
                         ])
         )
 
@@ -294,21 +316,12 @@ class Discriminator(nn.Module):
             )
             in_channels = info[i]['out_channels']
 
-        self.disc.append(disc_last(info,classes))
-        # self.disc_adaptive = nn.Sequential(
-        #                 OrderedDict([
-        #                     (f'adaptive_disc',nn.AdaptiveAvgPool1d(8)),
-        #                     (f"flatten_disc", nn.Flatten()),
-        #                     (f'linear_disc',torch.nn.Linear(info[-1]['out_channels']*8, classes)),
-        #                 ])
-        # )
+        self.disc.append(disc_last(info,classes,name='disc'))
+
         
     def forward(self, x, lengths):
         for i in range(len(self.disc)):
             x, lengths = self.disc[i](x, lengths,)
-        # x = self.disc_adaptive(x)
-        # x = torch.flatten(x,start_dim=1)
-        # x = self.disc_linear(x)
         return x # batch_size, classes,seq_length 
 
 
