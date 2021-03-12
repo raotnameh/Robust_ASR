@@ -37,18 +37,20 @@ def forward_call(model_components, inputs, input_sizes, device):
     z, updated_lengths = model_components[0](x_, updated_lengths) 
     a = z
     # decoder pass
-    decoder_out = model_components[4](z, updated_lengths) if model_components[4] is not None else None
+    decoder_out_e, _ = model_components[4](z, updated_lengths) if model_components[4] is not None else None
     # forget net forward pass.
     if model_components[1] is not None: 
         m, _ = model_components[1](x_, updated_lengths)
         z = z * m
+        decoder_out_f, _ = model_components[4](z, updated_lengths) if model_components[4] is not None else None
     else: 
         m = None
+        decoder_out_f = None
     # dicriminator net forward pass.
     disc_out = model_components[2](z) if model_components[2] is not None else None # discrmininator is present or not
     # asr forward pass.
     asr_out, asr_out_sizes = model_components[3](z, updated_lengths)
-    return asr_out.softmax(2).float(), asr_out_sizes, disc_out, decoder_out, a, z, updated_lengths, m
+    return asr_out.softmax(2).float(), asr_out_sizes, disc_out, decoder_out_e, decoder_out_f, a, z, updated_lengths, m
 
 
 def evaluate(test_loader, accent_dict, device, model_components, target_decoder, decoder, args):
@@ -76,13 +78,13 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
             inputs = inputs.to(device)
             
             # Forward pass
-            asr_out, asr_out_sizes, disc_out, decoder_out, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes, device)
+            asr_out, asr_out_sizes, disc_out, decoder_out_e, decoder_out_f, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes, device)
             #saving z and z_
             if args.save_representation:
                 dict_z.append([z.cpu(),accents,updated_lengths]) 
                 dict_z_.append([z_.cpu(),accents,updated_lengths])
                 if m is not None: dict_m.append([m.cpu(),accents,updated_lengths])
-                if args.use_decoder: dict_d.append([inputs,decoder_out.cpu(),accents,updated_lengths])
+                if args.use_decoder: dict_d.append([inputs,decoder_out_e.cpu(),decoder_out_f.cpu(),accents,updated_lengths])
             
             # Predictor metric
             split_targets = []
@@ -147,6 +149,7 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
         torch.save(dict_z,f"{args.save_representation}/z.pth") 
         torch.save(dict_z_,f"{args.save_representation}/z_.pth")
         torch.save(dict_m,f"{args.save_representation}/m.pth")
+        torch.save(dict_d,f"{args.save_representation}/d.pth")
     if args.save_output: 
         torch.save(output_data, f"{args.save_output}/out.pth")
 
