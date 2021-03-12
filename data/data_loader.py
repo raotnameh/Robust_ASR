@@ -95,13 +95,15 @@ class NoiseInjection(object):
 
 
 class SpectrogramParser(AudioParser):
-    def __init__(self, audio_conf, normalize=False, speed_volume_perturb=False, spec_augment=False):
+    def __init__(self, audio_conf, normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
         """
         Parses audio file into spectrogram with optional normalization and various augmentations
         :param audio_conf: Dictionary containing the sample rate, window and the window length/stride in seconds
         :param normalize(default False):  Apply standard mean and deviation normalization to audio tensor
         :param speed_volume_perturb(default False): Apply random tempo and gain perturbations
         :param spec_augment(default False): Apply simple spectral augmentation to mel spectograms
+        :param audio_recreation(default False): Make true if you want to save the phase,mean and std for audio recreation
+        :param metadata_reacreation_path(default empty string): Path to saving phase, mean and std for audio recreation. Add a path if audio_recreation is True.
         """
         super(SpectrogramParser, self).__init__()
         self.window_stride = audio_conf['window_stride']
@@ -115,6 +117,8 @@ class SpectrogramParser(AudioParser):
                                             audio_conf['noise_levels']) if audio_conf.get(
             'noise_dir') is not None else None
         self.noise_prob = audio_conf.get('noise_prob')
+        self.audio_recreation = audio_recreation
+        self.metadata_reacreation_path = metadata_reacreation_path
 
     def parse_audio(self, audio_path):
         if self.speed_volume_perturb:
@@ -135,14 +139,23 @@ class SpectrogramParser(AudioParser):
         # S = log(S+1)
         spect = np.log1p(spect)
         spect = torch.FloatTensor(spect)
+        mean = 0
+        std = 1
         if self.normalize:
             mean = spect.mean()
             std = spect.std()
             spect.add_(-mean)
             spect.div_(std)
+            mean = mean.item()
+            std = std.item()
 
         if self.spec_augment:
             spect = spec_augment(spect)
+        if self.audio_recreation:
+            print(mean,std)
+            save_dict = {"phase":phase,"mean":mean,"std":std}
+            with open(f"{self.metadata_reacreation_path+audio_path.split('/')[-1][:-4]}.pickle", 'wb') as handle:
+                pickle.dump(save_dict,handle)
 
         return spect
 
@@ -151,7 +164,7 @@ class SpectrogramParser(AudioParser):
 
 
 class SpectrogramDataset(Dataset, SpectrogramParser):
-    def __init__(self, audio_conf, manifest_filepath, labels,accent=None,normalize=False, speed_volume_perturb=False, spec_augment=False):
+    def __init__(self, audio_conf, manifest_filepath, labels,accent=None,normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
         """
         Dataset that loads tensors via a csv containing file paths to audio files and transcripts separated by
         a comma. Each new line is a different sample. Example below:
@@ -165,6 +178,8 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         :param normalize: Apply standard mean and deviation normalization to audio tensor
         :param speed_volume_perturb(default False): Apply random tempo and gain perturbations
         :param spec_augment(default False): Apply simple spectral augmentation to mel spectograms
+        :param audio_recreation(default False): Make true if you want to save the phase,mean and std for audio recreation
+        :param metadata_reacreation_path(default empty string): Path to saving phase, mean and std for audio recreation. Add a path if audio_recreation is True.
         """
         with open(manifest_filepath) as f:
             ids = f.readlines()
@@ -176,7 +191,7 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
             self.accent =accent
         self.size = len(ids)
         self.labels_map = dict([(labels[i], i) for i in range(len(labels))])
-        super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment)
+        super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment,audio_recreation,metadata_reacreation_path)
 
     def __getitem__(self, index):
         sample = self.ids[index]
