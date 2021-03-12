@@ -289,6 +289,7 @@ if __name__ == '__main__':
         hvd.broadcast_optimizer_state(models[i][-1], root_rank=0)
         models[i][-1] = hvd.DistributedOptimizer(models[i][-1], named_parameters=models[i][0].named_parameters())
     
+    # tensorboard_count = 0
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
