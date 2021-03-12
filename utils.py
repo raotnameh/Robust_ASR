@@ -33,7 +33,7 @@ def load_model_components(device, args,test=True):
     [i[0].eval() for i in models.values()]
     if not test: return package['labels']
     pre, encoder_model, asr_model = models['preprocessing'][0], models['encoder'][0], models['predictor'][0]
-    decoder = models['decoder'] if args.use_decoder else None
+    decoder = models['decoder'][0] if args.use_decoder else None
     forget_model = models['forget_net'][0] if args.forget_net else None
     disc_model = models['discriminator'][0] if args.disc else None
 

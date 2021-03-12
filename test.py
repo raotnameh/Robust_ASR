@@ -21,9 +21,11 @@ parser.add_argument('--gpu-rank', dest='gpu_rank', type=str, help='GPU to be use
 parser.add_argument('--cuda', action='store_true', default=False, help='whether to use cuda or not')
 # checkpoint loading args
 parser.add_argument('--model-path', type=str, help='Path to "model" directory, where weights of component of models are saved', required=True)
+parser.add_argument('--visual-path', type=str, help='Path to where the meta info for visualization will be saved')
 parser.add_argument('--forget-net', action='store_true', required=False, help='Whether to include forget module or not')
 parser.add_argument('--disc' , action='store_true', required=False, help='Whether to include discriminator module or not')
-parser.add_argument('--use-decoder' , action='store_true', required=False, help='Whether to include decoedr or not')
+parser.add_argument('--use-decoder' , action='store_true', required=False, help='Whether to include decoder or not')
+parser.add_argument('--visual' , action='store_true', required=False, help='Whether to save meta info for visualization')
 # decoder args
 parser.add_argument('--decoder', default='greedy', help='type of decoder to use.')
 
@@ -38,7 +40,7 @@ def forward_call(model_components, inputs, input_sizes, device):
     decoder_out = model_components[4](z, updated_lengths) if model_components[4] is not None else None
     # forget net forward pass.
     if model_components[1] is not None: 
-        m = model_components[1](x_, updated_lengths)
+        m, _ = model_components[1](x_, updated_lengths)
         z = z * m
     else: 
         m = None
@@ -91,9 +93,6 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
             decoded_output, _ = target_decoder.decode(asr_out, asr_out_sizes)
             target_strings = decoder.convert_to_strings(split_targets)
             
-            # print(decoded_output) 
-            # print(target_strings)
-            # exit()
             if args.save_output is not None:
                 # add output to data array, and continue
                 output_data.append((asr_out.cpu(), asr_out_sizes.cpu(), target_strings))
@@ -184,7 +183,9 @@ if __name__ == '__main__':
     test_dataset = SpectrogramDataset(audio_conf=audio_conf,
                                       manifest_filepath=args.test_manifest,
                                       labels=labels,
-                                      normalize=True)
+                                      normalize=True,
+                                      audio_recreation=args.visual,
+                                      metadata_reacreation_path=args.visual_path)
     test_loader = AudioDataLoader(test_dataset,
                                   batch_size=args.batch_size,
                                   num_workers=args.num_workers)

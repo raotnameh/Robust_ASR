@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 from torch.distributed import get_rank
 from torch.distributed import get_world_size
 from torch.utils.data.sampler import Sampler
-
+import pickle
 import librosa
 import numpy as np
 import scipy.signal
@@ -152,8 +152,7 @@ class SpectrogramParser(AudioParser):
         if self.spec_augment:
             spect = spec_augment(spect)
         if self.audio_recreation:
-            print(mean,std)
-            save_dict = {"phase":phase,"mean":mean,"std":std}
+            save_dict = {"phase":phase,"mean":mean,"std":std,"audio_path":audio_path}
             with open(f"{self.metadata_reacreation_path+audio_path.split('/')[-1][:-4]}.pickle", 'wb') as handle:
                 pickle.dump(save_dict,handle)
 
