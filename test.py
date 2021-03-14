@@ -84,7 +84,7 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
                 dict_z.append([z.cpu(),accents,updated_lengths]) 
                 dict_z_.append([z_.cpu(),accents,updated_lengths])
                 if m is not None: dict_m.append([m.cpu(),accents,updated_lengths])
-                if args.use_decoder: dict_d.append([inputs,decoder_out_e.cpu(),decoder_out_f.cpu(),accents,updated_lengths])
+                if args.use_decoder: dict_d.append([inputs.cpu(),decoder_out_e.cpu(),decoder_out_f.cpu(),accents,updated_lengths])
             
             # Predictor metric
             split_targets = []
