@@ -348,7 +348,7 @@ if __name__ == '__main__':
                     
                 [i_[0].train() for i_ in models.values()] # putting all the models in training state
             if args.train_asr: # Only trainig the ASR component
-                # try:    
+                # try:
                 [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
