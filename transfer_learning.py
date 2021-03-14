@@ -353,8 +353,8 @@ if __name__ == '__main__':
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
                     # Forward pass                    
-                    x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
-                    z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
+                    x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
+                    z,updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
                     m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
                     z_ = z * m # Forget Operation
                     decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
