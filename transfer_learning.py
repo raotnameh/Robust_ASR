@@ -150,42 +150,28 @@ if __name__ == '__main__':
         audio_conf['noise_dir'] = args.noise_dir
         audio_conf['noise_prob'] = args.noise_prob
         audio_conf['noise_levels'] = (args.noise_min, args.noise_max)
-    
-        if not args.train_asr: # if adversarial training.
-            assert 'discrimator' and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
-        else: 
-            try: 
-                print("Deleting the forget_net and discriminator")
-                del models['forget_net']
-                del models['discriminator']
-            except: pass
+        del models['discriminator']
+        del models['decoder']
 
-        
-        if not args.finetune: # If continuing training after the last epoch.
-            if args.using_new:
-                print(f"using new")
-                dummy = {i:models[i][-1] for i in models}
-                for i in models:
+        asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
+        asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        criterion = nn.CTCLoss(reduction='none')#CTCLoss()
+        models['predictor'] = [asr, criterion, asr_optimizer]
+
+        if args.using_new:
+            print(f"using new")
+            dummy = {i:models[i][-1] for i in models}
+            for i in models:
+                if i != 'predictor':
+                    print(f"uploading weights for {i}")
                     models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
                     models[i][-1].load_state_dict(dummy[i])
-                del dummy
-            
-            start_epoch = package['start_epoch']  # Index start at 0 for training
-            if start_iter is None:
-                # start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
-                start_iter = 0
-            else:
-                start_iter += 1
-            best_wer = package['best_wer']
-            best_cer = package['best_cer']
-            poor_cer_list = package['poor_cer_list']
-            a = package['train.log']
-        else:
-            start_iter = 0
-            a = ""
-            version_ = args.version
-            for i in models:
-                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            del dummy
+        
+        a = ""
+        start_iter = 0
+        version_ = args.version
+
         print(best_cer, best_wer, audio_conf,start_iter)
         print("loaded models succesfully")
     else:
@@ -233,6 +219,7 @@ if __name__ == '__main__':
             [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
             print(f"Total number of parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
             print(f"Initial learning rate: {print(models['encoder'][-1].param_groups[0]['lr'])}")
+            print(models.keys())
     
     #Creating the dataset
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
@@ -285,7 +272,6 @@ if __name__ == '__main__':
         p_counter, d_counter = eps, eps
 
         for i, (data) in enumerate(train_loader, start=start_iter):
-            # print((i+1)%5)
             if i == len(train_sampler):
                 break
             if args.dummy and i%2 == 1: break

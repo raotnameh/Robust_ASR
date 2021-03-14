@@ -56,7 +56,7 @@ parser.add_argument('--num-epochs', default=1, type=int,
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
 parser.add_argument('--disc-kl-loss', action='store_true',
                     help='use kl divergence loss for discriminator')
-parser.add_argument('--early-val', default=100, type=int,
+parser.add_argument('--early-val', default=1000, type=int,
                     help='Doing an early validation step')
                     
 # Model arguements
