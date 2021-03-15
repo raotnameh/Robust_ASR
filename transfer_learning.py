@@ -100,18 +100,10 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.enabled = True
     
-    # Initializing horovod distributed training
-    hvd.init()
-    torch.cuda.set_device(hvd.local_rank())
-
     version_ = args.version
     #Lables for the discriminator
     accent_dict = get_accents(args.train_manifest) 
     accent = list(accent_dict.values())
-
-    # Lr scaler for multi gpu training
-    lr_scaler = hvd.size()
-    args.lr = args.lr * lr_scaler
     
     # Set seeds for determinism
     torch.manual_seed(args.seed)
@@ -211,17 +203,17 @@ if __name__ == '__main__':
         fnet = Forget(configPre()[-1]['out_channels'],configFN())
         models['forget_net'] = [fnet, None, None]
 
-    if hvd.rank() == 0:
-        if not args.silent: 
-            # Printing the models
-            print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
-             # Printing the parameters of all the different modules 
-            [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
-            print(f"Total number of parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
-            print(f"Initial learning rate: {print(models['encoder'][-1].param_groups[0]['lr'])}")
-            print(models.keys())
-    
-    #Creating the dataset
+
+    if not args.silent: 
+        # Printing the models
+        print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
+            # Printing the parameters of all the different modules 
+        [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
+        print(f"Total number of parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
+        print(f"Initial learning rate: {print(models['encoder'][-1].param_groups[0]['lr'])}")
+        print(models.keys())
+
+     #Creating the dataset
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
                                        spec_augment=args.spec_augment)
@@ -232,38 +224,33 @@ if __name__ == '__main__':
     test_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.val_manifest, labels=labels,
                                       normalize=True, speed_volume_perturb=False, spec_augment=False)
 
-    train_sampler = DistributedBucketingSampler(train_dataset, batch_size=args.batch_size,
-                                                num_replicas=hvd.size(), rank=hvd.rank())
+    train_sampler = BucketingSampler(train_dataset, batch_size=args.batch_size)
     if not args.train_asr: 
-        disc_train_sampler = DistributedBucketingSampler(disc_train_dataset, batch_size=args.batch_size,
-                                                num_replicas=hvd.size(), rank=hvd.rank())
+        disc_train_sampler = BucketingSampler(disc_train_dataset, batch_size=args.batch_size)
 
     train_loader = AudioDataLoader(train_dataset,
-                                   num_workers=args.num_workers, batch_sampler=train_sampler,pin_memory=True)
+                                   num_workers=args.num_workers, batch_sampler=train_sampler)
     if not args.train_asr: 
         disc_train_loader = AudioDataLoader(disc_train_dataset,
-                                   num_workers=args.num_workers, batch_sampler=disc_train_sampler,pin_memory=True)    
+                                   num_workers=args.num_workers, batch_sampler=disc_train_sampler)
+    
         disc_train_sampler.shuffle(start_epoch)
         disc_ = iter(disc_train_loader)
 
-    test_loader = AudioDataLoader(test_dataset, batch_size=4*int(args.batch_size),
-                                  num_workers=args.num_workers,pin_memory=True)
+    test_loader = AudioDataLoader(test_dataset, batch_size=args.batch_size,
+                                  num_workers=args.num_workers)
 
     if args.no_sorta_grad:
         print("Shuffling batches for the following epochs")
         train_sampler.shuffle(start_epoch)
-    
-    if hvd.rank() == 0: 
-        accent_list = sorted(accent, key=lambda x:accent[x])
-        a += f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
+
+    accent_list = sorted(accent, key=lambda x:accent[x])
+    a += f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
 
     # HVD multi gpu training
     for i in models.keys():
         models[i][0].to(device)
-        hvd.broadcast_parameters(models[i][0].state_dict(), root_rank=0)
-        hvd.broadcast_optimizer_state(models[i][-1], root_rank=0)
-        models[i][-1] = hvd.DistributedOptimizer(models[i][-1], named_parameters=models[i][0].named_parameters())
-    
+       
     # tensorboard_count = 0
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
     for epoch in range(start_epoch, args.epochs):
@@ -281,40 +268,41 @@ if __name__ == '__main__':
             input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
             inputs = inputs.to(device)
         
-            if hvd.rank() == 0 :
-                if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
-                    save = {}
-                    for s_ in models.keys():
-                        save[s_] = []
-                        save[s_].append(models[s_][0]) 
-                        save[s_].append(models[s_][1]) 
-                        save[s_].append(models[s_][2].state_dict()) 
-                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
-                    torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
-                    del save
-            
+        
+            if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
+                save = {}
+                for s_ in models.keys():
+                    save[s_] = []
+                    save[s_].append(models[s_][0]) 
+                    save[s_].append(models[s_][1]) 
+                    save[s_].append(models[s_][2].state_dict()) 
+                package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
+                del save
+        
 
             if i % args.early_val+1 == args.early_val and args.early_val < len(train_sampler):
-                if hvd.rank() == 0 :
-                    with torch.no_grad():
-                        wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
-                    print('Validation Summary Epoch: [{0}]\t'
-                            'Average WER {wer:.3f}\t'
-                            'Average CER {cer:.3f}\t'
-                            'Accuracy {acc_: .3f}\t'
-                            'Discriminator accuracy (micro) {acc: .3f}\t'
-                            'Discriminator precision (micro) {pre: .3f}\t'
-                            'Discriminator recall (micro) {rec: .3f}\t'
-                            'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
+               
+                with torch.no_grad():
+                    print(eps)
+                    wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels)
+                print('Validation Summary Epoch: [{0}]\t'
+                        'Average WER {wer:.3f}\t'
+                        'Average CER {cer:.3f}\t'
+                        'Accuracy {acc_: .3f}\t'
+                        'Discriminator accuracy (micro) {acc: .3f}\t'
+                        'Discriminator precision (micro) {pre: .3f}\t'
+                        'Discriminator recall (micro) {rec: .3f}\t'
+                        'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
 
-                    # Logging to tensorboard.
-                    writer.add_scalar('Validation/Average-WER', wer, epoch+1)
-                    writer.add_scalar('Validation/Average-CER', cer, epoch+1)
-                    writer.add_scalar('Validation/Discriminator-Accuracy', num/length *100, epoch+1)
-                    writer.add_scalar('Validation/Discriminator-Precision', weighted_precision, epoch+1)
-                    writer.add_scalar('Validation/Discriminator-Recall', weighted_recall, epoch+1)
-                    writer.add_scalar('Validation/Discriminator-F1', weighted_f1, epoch+1)
-                    
+                # Logging to tensorboard.
+                writer.add_scalar('Validation/Average-WER', wer, epoch+1)
+                writer.add_scalar('Validation/Average-CER', cer, epoch+1)
+                writer.add_scalar('Validation/Discriminator-Accuracy', num/length *100, epoch+1)
+                writer.add_scalar('Validation/Discriminator-Precision', weighted_precision, epoch+1)
+                writer.add_scalar('Validation/Discriminator-Recall', weighted_recall, epoch+1)
+                writer.add_scalar('Validation/Discriminator-F1', weighted_f1, epoch+1)
+                
                 [i_[0].train() for i_ in models.values()] # putting all the models in training state
             if args.train_asr: # Only trainig the ASR component
                 # try:    
@@ -337,10 +325,7 @@ if __name__ == '__main__':
                 valid_loss, error = check_loss(loss, p_loss)
                 if valid_loss:
                     scaler.scale(loss).backward()
-                    for i_ in models.keys():
-                        if models[i_][-1] is not None: models[i_][-1].synchronize()
-                    with models['predictor'][-1].skip_synchronize():
-                        scaler.step(models['predictor'][-1])
+                    scaler.step(models['predictor'][-1])
                     scaler.update()
                 else: 
                     print(error)
@@ -348,107 +333,98 @@ if __name__ == '__main__':
                     p_loss = 0.0
                 
                 p_avg_loss += p_loss
-                if hvd.rank() == 0:
-                    # Logging to tensorboard.
-                    writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
-                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
+            
+                # Logging to tensorboard.
+                writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
+                if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
             
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
         epoch_time = time.time() - start_epoch_time
         start_iter = 0
-        if hvd.rank() == 0:
-            print('Training Summary Epoch: [{0}]\t'
-              'Time taken (s): {1}\t'
-              'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
+    
+        print('Training Summary Epoch: [{0}]\t'
+            'Time taken (s): {1}\t'
+            'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
 
-        if hvd.rank() == 0:
-            with torch.no_grad():
-                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
+       
+        with torch.no_grad():
+            wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels)
             
-            f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
-            a += f"{epoch},{epoch_time},{wer},{cer},{num/length *100},{weighted_precision},{weighted_recall},{weighted_f1},{d_avg_loss},{p_avg_loss},{args.alpha},{args.beta},{args.gamma}\n"
+        f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
+        a += f"{epoch},{epoch_time},{wer},{cer},{num/length *100},{weighted_precision},{weighted_recall},{weighted_f1},{d_avg_loss},{p_avg_loss},{args.alpha},{args.beta},{args.gamma}\n"
 
-            with open(loss_save, "w") as f:
-                f.write(a)
-            # Logging to tensorboard.
-            writer.add_scalar('Validation/Average-WER', wer, epoch+1)
-            writer.add_scalar('Validation/Average-CER', cer, epoch+1)
-            writer.add_scalar('Validation/Discriminator-Accuracy', num/length *100, epoch+1)
-            writer.add_scalar('Validation/Discriminator-Precision', weighted_precision, epoch+1)
-            writer.add_scalar('Validation/Discriminator-Recall', weighted_recall, epoch+1)
-            writer.add_scalar('Validation/Discriminator-F1', weighted_f1, epoch+1)
+        with open(loss_save, "w") as f:
+            f.write(a)
+        # Logging to tensorboard.
+        writer.add_scalar('Validation/Average-WER', wer, epoch+1)
+        writer.add_scalar('Validation/Average-CER', cer, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Accuracy', num/length *100, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Precision', weighted_precision, epoch+1)
+        writer.add_scalar('Validation/Discriminator-Recall', weighted_recall, epoch+1)
+        writer.add_scalar('Validation/Discriminator-F1', weighted_f1, epoch+1)
+        
+        print('Validation Summary Epoch: [{0}]\t'
+                'Average WER {wer:.3f}\t'
+                'Average CER {cer:.3f}\t'
+                'Accuracy {acc_: .3f}\t'
+                'Discriminator accuracy (micro) {acc: .3f}\t'
+                'Discriminator precision (micro) {pre: .3f}\t'
+                'Discriminator recall (micro) {rec: .3f}\t'
+                'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
+
+        # saving
+        if best_wer is None or best_wer > wer:
+            best_wer = wer
+            print("Updating the final model!")
+            save = {}
+            for s_ in models.keys():
+                save[s_] = []
+                save[s_].append(models[s_][0]) 
+                save[s_].append(models[s_][1]) 
+                save[s_].append(models[s_][2].state_dict()) 
+            package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+            torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+            del save
             
-            print('Validation Summary Epoch: [{0}]\t'
-                    'Average WER {wer:.3f}\t'
-                    'Average CER {cer:.3f}\t'
-                    'Accuracy {acc_: .3f}\t'
-                    'Discriminator accuracy (micro) {acc: .3f}\t'
-                    'Discriminator precision (micro) {pre: .3f}\t'
-                    'Discriminator recall (micro) {rec: .3f}\t'
-                    'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
+        if args.checkpoint:
+            save = {}
+            for s_ in models.keys():
+                save[s_] = []
+                save[s_].append(models[s_][0]) 
+                save[s_].append(models[s_][1]) 
+                save[s_].append(models[s_][2].state_dict()) 
+            package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+            torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
+            del save
 
-            # saving
-            if best_wer is None or best_wer > wer:
-                best_wer = wer
-                print("Updating the final model!")
-                save = {}
-                for s_ in models.keys():
-                    save[s_] = []
-                    save[s_].append(models[s_][0]) 
-                    save[s_].append(models[s_][1]) 
-                    save[s_].append(models[s_][2].state_dict()) 
-                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
-                torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
-                del save
-                
-            if args.checkpoint:
-                save = {}
-                for s_ in models.keys():
-                    save[s_] = []
-                    save[s_].append(models[s_][0]) 
-                    save[s_].append(models[s_][1]) 
-                    save[s_].append(models[s_][2].state_dict()) 
-                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
-                torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
-                del save
+        # Exiting criteria
+        terminate_train = False
+        if best_cer is None or best_cer > cer:
+            best_cer = cer
+            poor_cer_list = []
+        else:
+            poor_cer_list.append(cer)
+            if len(poor_cer_list) >= args.patience:
+                print("Exiting training loop...")
+                terminate_train = True
+        if terminate_train:
+            break
+        d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
 
-            # Exiting criteria
-            terminate_train = False
-            if best_cer is None or best_cer > cer:
-                best_cer = cer
-                poor_cer_list = []
-            else:
-                poor_cer_list.append(cer)
-                if len(poor_cer_list) >= args.patience:
-                    print("Exiting training loop...")
-                    terminate_train = True
-            if terminate_train:
-                break
-            d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
-
-            # anneal lr
-            dummy_lr = None
-            for i in models:
-                for g in models[i][-1].param_groups:
-                    if dummy_lr is None: dummy_lr = g['lr']
-                    if g['lr'] >= 1e-6:
-                        g['lr'] = g['lr'] * args.learning_anneal
-                print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
-            dummy_lr = None
+        # anneal lr
+        dummy_lr = None
+        for i in models:
+            for g in models[i][-1].param_groups:
+                if dummy_lr is None: dummy_lr = g['lr']
+                if g['lr'] >= 1e-6:
+                    g['lr'] = g['lr'] * args.learning_anneal
+            print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
+        dummy_lr = None
 
         if not args.no_shuffle:
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
 
     writer.close()
-
-# if (i+1)%500 == 0 and i !=1:
-#                 if hvd.rank() == 0: 
-#                     with torch.no_grad():
-#                         wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
-#                         print('Validation Summary Epoch: [{0}]\t'
-#                                 'Average WER {wer:.3f}\t'
-#                                 'Average CER {cer:.3f}\t'.format(epoch + 1, wer=wer, cer=cer))
-#                 [h_[0].train() for h_ in models.values()] # putting all the models in training state
