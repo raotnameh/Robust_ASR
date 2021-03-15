@@ -163,7 +163,7 @@ if __name__ == '__main__':
             dummy = {i:models[i][-1] for i in models}
             for i in models:
                 if i != 'predictor':
-                    print(f"uploading weights for {i}")
+                    print(f"uploading optim weights for {i}")
                     models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
                     models[i][-1].load_state_dict(dummy[i])
             del dummy

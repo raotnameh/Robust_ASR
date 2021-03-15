@@ -75,7 +75,7 @@ def weights_(args, accent_dict):
         else: print(f"error in weighted loss")
     return torch.sum(disc_loss_weights) / disc_loss_weights
 
-def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001):
+def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001):
     [i[0].eval() for i in models.values()]
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
