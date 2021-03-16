@@ -315,7 +315,7 @@ if __name__ == '__main__':
                         z,updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
                         m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
                         z_ = z * m # Forget Operation
-                    asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
+                    asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
                     # Loss         
                     asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
                     asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch

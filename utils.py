@@ -74,7 +74,7 @@ def weights_(args, accent_dict):
         if accent_dict[i] == count: disc_loss_weights[count] =  accent_counts[i]
         else: print(f"error in weighted loss")
     return torch.sum(disc_loss_weights) / disc_loss_weights
-
+    
 def validation(test_loader,GreedyDecoder, models, args,accent,device,labels):
     [i[0].eval() for i in models.values()]
     eps = 0.0000000001
@@ -105,9 +105,9 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,labels):
             # Forward pass                  
             x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
             z,updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-            m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
-            z_ = z * m # Forget Operation
-            asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
+            # m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
+            # z_ = z * m # Forget Operation
+            asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
 
         # Predictor metric
         split_targets = []
