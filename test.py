@@ -30,19 +30,20 @@ parser.add_argument('--visual' , action='store_true', required=False, help='Whet
 parser.add_argument('--decoder', default='greedy', help='type of decoder to use.')
 
 # model compnents: e, f, d, asr
-def forward_call(model_components, inputs, input_sizes, device): 
+def forward_call(model_components, inputs, input_sizes, device,args): 
     # preprocessing pass
     x_, updated_lengths = model_components[5](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
     # encoder pass.
     z, updated_lengths = model_components[0](x_, updated_lengths) 
     a = z
     # decoder pass
-    decoder_out_e, _ = model_components[4](z, updated_lengths) if model_components[4] is not None else None
+    decoder_out_e, decoder_out_f = None, None
+    if args.use_decoder: decoder_out_e, _ = model_components[4](z, updated_lengths)
     # forget net forward pass.
     if model_components[1] is not None: 
         m, _ = model_components[1](x_, updated_lengths)
         z = z * m
-        decoder_out_f, _ = model_components[4](z, updated_lengths) if model_components[4] is not None else None
+        if args.use_decoder:  decoder_out_f, _ = model_components[4](z, updated_lengths)
     else: 
         m = None
         decoder_out_f = None
@@ -78,7 +79,7 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
             inputs = inputs.to(device)
             
             # Forward pass
-            asr_out, asr_out_sizes, disc_out, decoder_out_e, decoder_out_f, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes, device)
+            asr_out, asr_out_sizes, disc_out, decoder_out_e, decoder_out_f, z, z_, updated_lengths, m = forward_call(model_components, inputs, input_sizes, device,args)
             #saving z and z_
             if args.save_representation:
                 dict_z.append([z.cpu(),accents,updated_lengths]) 
