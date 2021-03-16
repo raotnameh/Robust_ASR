@@ -12,5 +12,5 @@ def add_decoder_args(parser):
                                 'vocabulary will be used in beam search, default 40.')
     beam_args.add_argument('--cutoff-prob', default=1.0, type=float,
                            help='Cutoff probability in pruning,default 1.0, no pruning.')
-    beam_args.add_argument('--lm-workers', default=4, type=int, help='Number of LM processes to use')
+    beam_args.add_argument('--lm-workers', default=24, type=int, help='Number of LM processes to use')
     return parser
