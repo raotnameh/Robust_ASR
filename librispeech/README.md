@@ -11,33 +11,49 @@ It also contains `libri_home_csvs`, which contains csvs present in the home dire
 ### outd.csv
 
 Total Time: 10.509 Hrs
+
 min audio time: 1.065 secs
+
 max audio time: 35.155 secs
+
 male time: 19035.96 secs
+
 female time: 18796.42 secs
 
 ### 50.csv
 
 Total Time: 50.0 Hrs
+
 min audio time: 1.17 secs
+
 max audio time: 21.46 secs
+
 male time: 88762.90 secs
+
 female time: 91238.75 secs
 
 ### new_out.csv
 
 Total Time: 956.991 Hrs
+
 min audio time: 0.83 secs
+
 max audio time: 29.73 secs
+
 male time: 1777701.25 secs
+
 female time: 1667466.091 secs
 
 ### new_train_m_f.csv
 
 Total Time: 315.812 Hrs
+
 min audio time: 0.83 secs
+
 max audio time: 15.0 secs
+
 male time: 587330.64 secs
+
 female time: 549591.33 secs
 
 ## Python Scripts
