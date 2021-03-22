@@ -1,6 +1,6 @@
-# Librispeech Data Normalisation For ASR
+# Librispeech Data and Data Normalisation For ASR
 
-This branch can be utilized to create normalized CSVs for the librispeech datasets. 
+This directory contains [Librispeech](https://www.openslr.org/12) data csvs and python files for preprocessing the librispeech data to our use case.
 
 ## CSV Data
 
@@ -18,7 +18,11 @@ max audio time: 35.155 secs
 
 male time: 19035.96 secs
 
+male files: 2743
+
 female time: 18796.42 secs
+
+female files: 2824
 
 ### 50.csv
 
@@ -30,7 +34,11 @@ max audio time: 21.46 secs
 
 male time: 88762.90 secs
 
+male files: 7394 
+
 female time: 91238.75 secs
+
+female files: 7394
 
 ### new_out.csv
 
@@ -42,7 +50,11 @@ max audio time: 29.73 secs
 
 male time: 1777701.25 secs
 
+male files: 144898
+
 female time: 1667466.091 secs
+
+female files: 135385
 
 ### new_train_m_f.csv
 
@@ -54,7 +66,11 @@ max audio time: 15.0 secs
 
 male time: 587330.64 secs
 
+male files: 53189
+
 female time: 549591.33 secs
+
+female files: 49579
 
 ## Python Scripts
 
@@ -95,7 +111,3 @@ Each data point in the csv created has a speaker id associated with it. We need 
 To run libri_mappingspeaker.py, run the following command-
 
 `python libri_mappingspeaker.py --speakertxt-path [path to file speaker.txt in Librispeech data] --csvs-path [path to folder where final csvs are placed]`
-
-
-
-
