@@ -1,6 +1,6 @@
-# Commonvoice Data Normalisation For ASR
+# Commonvoice Data and Data Normalisation For ASR
 
-This branch can be utilized to create normalized CSVs for the common voice datasets. 
+This directory contains csv data for [Commonvoice](https://commonvoice.mozilla.org/en/datasets) and python files for data preprocessing for commonvoice. 
 
 The branch contains 4 python files which can be utilised to create these CSVs. 
 
