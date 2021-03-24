@@ -19,7 +19,7 @@ from decoder import GreedyDecoder
 from model import *
 from model_ssl import *
 
-from utils import reduce_tensor, check_loss, Decoder_loss, validation, weights_, ContrastiveLoss
+from utils import reduce_tensor, check_loss, Decoder_loss, validation, weights_, ContrastiveLoss, validation_ssl
 
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
@@ -109,7 +109,9 @@ parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_rank
+    #if args.gpu_rank: os.environ["CUDA_VISIBLE_DEVICES"]='1'
+
+    os.environ["CUDA_VISIBLE_DEVICES"]='1'
     version_ = args.version
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.enabled = True
@@ -123,7 +125,7 @@ if __name__ == '__main__':
     random.seed(args.seed)
 
     #Gpu setting
-    device = torch.device("cuda" if args.cuda else "cpu")
+    device = torch.device("cuda:1" if args.cuda else "cpu")
 
     #Where to save the models and training's metadata
     save_folder = os.path.join(args.exp_name, 'models')
@@ -165,16 +167,16 @@ if __name__ == '__main__':
     # Preprocessing
     '''pre = Encoder(161,configPre())
     pre_optimizer = torch.optim.Adam(pre.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-    models['pre'] = [pre, None, pre_optimizer]
+    models['pre'] = [pre, None, pre_optimizer]'''
 
     # ASR
     print(len(labels))
-    asr = Predictor(configE()[-1]['out_channels'],configP())
-    asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-    criterion = nn.CTCLoss(reduction='none')#CTCLoss()
-    models['predictor'] = [asr, criterion, asr_optimizer]
+    #asr = Predictor(768,configP())
+    #criterion = nn.CTCLoss(reduction='none')#CTCLoss()
+    #asr.to(device)
+    #models['predictor'] = [asr, criterion, asr_optimizer]
 
-    # Encoder and Decoder
+    '''# Encoder and Decoder
     encoder = Encoder(configPre()[-1]['out_channels'],configE())
     e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
     decoder = Decoder(configE()[-1]['out_channels'],configDec())
@@ -187,10 +189,12 @@ if __name__ == '__main__':
     ssl_loss = ContrastiveLoss()
 
     ssl_model = Wav2Vec2Model(Wav2Vec2Config)
-    optimizer = torch.optim.Adam(ssl_model.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+    optimizer_ssl = torch.optim.Adam(ssl_model.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
     ssl_model.to(device)
+    #ssl_model = torch.load('/media/data_dump/hemant/atul/ss_train1/Robust_ASR/enus_ssl_40/ssl_15/models/ckpt_final.pth', map_location=device)
 
-    models['ssl_model'] = [ssl_model]
+    #asr_optimizer = torch.optim.Adam(list(asr.parameters()) + list(ssl_model['models'].parameters()), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+    #models['ssl_model'] = ssl_model
 
     # Lr scheduler
     #scheduler = []
@@ -219,6 +223,7 @@ if __name__ == '__main__':
     disc_train_loader = AudioDataLoader(disc_train_dataset,
                                    num_workers=args.num_workers, batch_sampler=disc_train_sampler)
     
+    #exit()
     disc_train_sampler.shuffle(start_epoch)
     disc_ = iter(disc_train_loader)
 
@@ -256,9 +261,13 @@ if __name__ == '__main__':
     beta = args.mw_beta
     gamma = args.mw_gamma
 
+    best_val_loss = np.inf
+
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False)
     for epoch in range(start_epoch, args.epochs):
-        [i[0].train() for i in models.values()] # putting all the models in training state
+        #[i[0].train() for i in models.values()] # putting all the models in training state
+        #asr.train()
+        ssl_model.train()
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
 
@@ -271,24 +280,39 @@ if __name__ == '__main__':
             inputs, targets, input_percentages, target_sizes, accents = data
             input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
             inputs = inputs.to(device)
-
+            inputs = inputs.view(4,-1)
+            #print(inputs.shape)
+            #exit()
             if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0:
                 package = {'models': models , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
             
             if args.train_asr: # Only trainig the ASR component
                 
-                [m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+                #[m[-1].zero_grad() for m in models.values() if m[-1] is not None] #making graidents zero
+                optimizer_ssl.zero_grad()
                 p_counter += 1
-                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
+                #with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
 
-                    out = ssl_model(inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+                #z, updated_lengths = ssl_model['models'](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+                out = ssl_model(inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
                 
-                    loss = ssl_loss.forward(out['x'])# + alpha*ssl_model.get_extra_losses(out)[0] #asr_loss + dec_loss
+                #print(z.shape)
+                #print(z.type(),updated_lengths.type())
+                #z = z.transpose(1,2)
+                #asr_out, asr_out_sizes = asr(z, updated_lengths)
+            
+                #print(asr_out.type(),asr_out_sizes.type())
+                loss = ssl_loss.forward(out['x']) + 0.2*ssl_model.get_extra_losses(out)[0] #asr_loss + dec_loss
+                #loss = criterion
+
+                #asr_out = asr_out.transpose(0, 1)  # TxNxH
+                #asr_loss = torch.mean(criterion(asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
+                #loss = asr_loss
                 
                 p_loss = loss.item()
                 loss.backward()
-                optimizer.step()
+                optimizer_ssl.step()
 
                 '''p_loss = loss.item()
                 valid_loss, error = check_loss(loss, p_loss)
@@ -307,7 +331,8 @@ if __name__ == '__main__':
                 writer.add_scalar('Train/Predictor-Per-Iteration-Loss', p_loss, len(train_sampler)*epoch+i+1) # Predictor-loss in the current iteration.
                 writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1)
                 print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
-                # continue
+                
+                continue
 
         d_avg_loss /= d_counter
         p_avg_loss /= p_counter
@@ -323,15 +348,35 @@ if __name__ == '__main__':
         # for i in scheduler:
         #     i.step()
 
-        # if not args.no_shuffle:
-        #     print("Shuffling batches...")
-        #     train_sampler.shuffle(epoch)
+        if not args.no_shuffle:
+            print("Shuffling batches...")
+            train_sampler.shuffle(epoch)
 
-        # continue
+        #with torch.no_grad():
+        #    val_loss = validation_ssl(ssl_model, device, test_loader, args)
+        
+        #writer.add_scalar('Validation/loss', val_loss, epoch+1)
+        
+        # saving
+        #if best_val_loss is None or best_val_loss > val_loss:
+        #    best_val_loss = val_loss
+        #    print("Updating the final model!")
+        #    package = {'models': ssl_model , 'start_epoch': epoch+1, 'best_val_loss': best_val_loss}
+        #   torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+            
+        #if args.checkpoint:
+        #    package = {'models': models , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a}
+        #    torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))        
+        
+        #if not args.no_shuffle:
+        #    print("Shuffling batches...")
+        #    train_sampler.shuffle(epoch)
+
+        continue
 
         start_ter = 0
         with torch.no_grad():
-            wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
+            wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, asr, args,accent,device,loss_save,labels,ssl_model, criterion, eps=0.0000000001)
         
         a += f"{epoch},{epoch_time},{wer},{cer},{num/length *100},"
     
@@ -389,8 +434,8 @@ if __name__ == '__main__':
         d_avg_loss, p_avg_loss, p_d_avg_loss = 0, 0, 0
 
         # anneal lr
-        for i in scheduler:
-            i.step()
+        #for i in scheduler:
+        #    i.step()
 
         if not args.no_shuffle:
             print("Shuffling batches...")

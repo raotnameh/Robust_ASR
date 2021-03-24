@@ -42,17 +42,20 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         feature_enc_layers = eval(cfg.conv_feature_layers)
         
-        self.embed = cfg.conv_feature_output_channels
+        #self.embed = cfg.conv_feature_output_channels
 
-        '''self.feature_extractor = ConvFeatureExtractionModel(
+        feature_enc_layers = eval(cfg.conv_feature_layers)
+        self.embed = feature_enc_layers[-1][0]
+
+        self.feature_extractor = ConvFeatureExtractionModel(
             conv_layers=feature_enc_layers,
             dropout=0.0,
             mode=cfg.extractor_mode,
             conv_bias=cfg.conv_bias,
         )
-        '''
-        self.feature_extractor_pre = Pre(cfg.conv_feature_input_channels,configPre())
-        self.feature_extractor = Encoder(configPre()[-1]['out_channels'],configE())
+        
+        #self.feature_extractor_pre = Pre(cfg.conv_feature_input_channels,configPre())
+        #self.feature_extractor = Encoder(configPre()[-1]['out_channels'],configE())
 
         self.post_extract_proj = (
             nn.Linear(self.embed, cfg.encoder_embed_dim)
@@ -127,7 +130,8 @@ class Wav2Vec2Model(BaseFairseqModel):
             torch.FloatTensor(cfg.encoder_embed_dim).uniform_()
         )
 
-        self.encoder = Decoder(cfg.encoder_embed_dim,configDec())
+        self.encoder = TransformerEncoder(cfg)
+        #self.encoder = Decoder(cfg.encoder_embed_dim,configDec())
         self.layer_norm = LayerNorm(self.embed)
 
         self.target_glu = None
@@ -262,12 +266,13 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         return logits
 
-    def forward(self, source, WIDTHS, padding_mask=None, mask=True, features_only=False):
+    def forward(self, source, WIDTHS, padding_mask=None, mask=True, features_only=False, enco_feat_only=False):
 
         if self.feature_grad_mult > 0:
             
-            features, lens = self.feature_extractor_pre(source, WIDTHS)
-            features, lens = self.feature_extractor(features, lens)
+            #features, lens = self.feature_extractor_pre(source, WIDTHS)
+            #features, lens = self.feature_extractor(features, lens)
+            features = self.feature_extractor(source)
             if self.feature_grad_mult != 1.0:
                 features = GradMultiply.apply(features, self.feature_grad_mult)
         else:
@@ -275,6 +280,9 @@ class Wav2Vec2Model(BaseFairseqModel):
                 features = self.feature_extractor(source)
 
         features_pen = features.float().pow(2).mean()
+
+        if enco_feat_only:
+            return {"x": features, "updated_lengths":lens}
 
         features = features.transpose(1, 2)
 
@@ -312,6 +320,7 @@ class Wav2Vec2Model(BaseFairseqModel):
         x = self.encoder(features, lens)#, padding_mask=padding_mask)
 
         if mask:
+            print("what!")
             x, mask_indices = self.apply_mask(x, padding_mask)
             if mask_indices is not None:
                 y = unmasked_features[mask_indices].view(
@@ -397,6 +406,10 @@ class Wav2Vec2Model(BaseFairseqModel):
         res = self.forward(source, padding_mask, mask=mask, features_only=True)
         return res["x"], res["padding_mask"]
 
+    def extract_enco_features(self, source, padding_mask, mask=False):
+        res = self.forward(source, padding_mask, mask=mask, enco_feat_only=True)
+        return res["x"], res["updated_lengths"]
+
     def get_logits(self, net_output):
         logits = net_output["x"]
         logits = logits.transpose(0, 2)
@@ -427,14 +440,295 @@ class Wav2Vec2Model(BaseFairseqModel):
         self.target_glu = None
         self.final_proj = None
 
+class ConvFeatureExtractionModel(nn.Module):
+    def __init__(
+        self,
+        conv_layers: List[Tuple[int, int, int]],
+        dropout: float = 0.0,
+        mode: str = "default",
+        conv_bias: bool = False,
+    ):
+        super().__init__()
+
+        assert mode in {"default", "layer_norm"}
+
+        def block(
+            n_in,
+            n_out,
+            k,
+            stride,
+            is_layer_norm=False,
+            is_group_norm=False,
+            conv_bias=False,
+        ):
+            def make_conv():
+                conv = nn.Conv1d(n_in, n_out, k, stride=stride, bias=conv_bias)
+                nn.init.kaiming_normal_(conv.weight)
+                return conv
+
+            assert (
+                is_layer_norm and is_group_norm
+            ) == False, "layer norm and group norm are exclusive"
+
+            if is_layer_norm:
+                return nn.Sequential(
+                    make_conv(),
+                    nn.Dropout(p=dropout),
+                    nn.Sequential(
+                        TransposeLast(),
+                        Fp32LayerNorm(dim, elementwise_affine=True),
+                        TransposeLast(),
+                    ),
+                    nn.GELU(),
+                )
+            elif is_group_norm:
+                return nn.Sequential(
+                    make_conv(),
+                    nn.Dropout(p=dropout),
+                    Fp32GroupNorm(dim, dim, affine=True),
+                    nn.GELU(),
+                )
+            else:
+                return nn.Sequential(make_conv(), nn.Dropout(p=dropout), nn.GELU())
+
+        in_d = 1
+        self.conv_layers = nn.ModuleList()
+        for i, cl in enumerate(conv_layers):
+            assert len(cl) == 3, "invalid conv definition: " + str(cl)
+            (dim, k, stride) = cl
+
+            self.conv_layers.append(
+                block(
+                    in_d,
+                    dim,
+                    k,
+                    stride,
+                    is_layer_norm=mode == "layer_norm",
+                    is_group_norm=mode == "default" and i == 0,
+                    conv_bias=conv_bias,
+                )
+            )
+            in_d = dim
+
+    def forward(self, x):
+
+        # BxT -> BxCxT
+        x = x.unsqueeze(1)
+
+        for conv in self.conv_layers:
+            x = conv(x)
+
+        return x
+
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+
+        self.dropout = args.dropout
+        self.embedding_dim = args.encoder_embed_dim
+
+        self.pos_conv = nn.Conv1d(
+            self.embedding_dim,
+            self.embedding_dim,
+            kernel_size=args.conv_pos,
+            padding=args.conv_pos // 2,
+            groups=args.conv_pos_groups,
+        )
+        dropout = 0
+        std = math.sqrt((4 * (1.0 - dropout)) / (args.conv_pos * self.embedding_dim))
+        nn.init.normal_(self.pos_conv.weight, mean=0, std=std)
+        nn.init.constant_(self.pos_conv.bias, 0)
+
+        self.pos_conv = nn.utils.weight_norm(self.pos_conv, name="weight", dim=2)
+        self.pos_conv = nn.Sequential(self.pos_conv, SamePad(args.conv_pos), nn.GELU())
+
+        self.layers = nn.ModuleList(
+            [
+                TransformerSentenceEncoderLayer(
+                    embedding_dim=self.embedding_dim,
+                    ffn_embedding_dim=args.encoder_ffn_embed_dim,
+                    num_attention_heads=args.encoder_attention_heads,
+                    dropout=self.dropout,
+                    attention_dropout=args.attention_dropout,
+                    activation_dropout=args.activation_dropout,
+                    activation_fn=args.activation_fn,
+                    layer_norm_first=args.layer_norm_first,
+                )
+                for _ in range(args.encoder_layers)
+            ]
+        )
+
+        self.layer_norm_first = args.layer_norm_first
+        self.layer_norm = LayerNorm(self.embedding_dim)
+        self.layerdrop = args.encoder_layerdrop
+
+        self.apply(init_bert_params)
+
+    def forward(self, x, padding_mask=None):
+        x = self.extract_features(x, padding_mask)
+
+        if self.layer_norm_first:
+            x = self.layer_norm(x)
+
+        return x
+
+    def extract_features(self, x, padding_mask=None):
+
+        if padding_mask is not None:
+            x[padding_mask] = 0
+
+        x_conv = self.pos_conv(x.transpose(1, 2))
+        x_conv = x_conv.transpose(1, 2)
+        x += x_conv
+
+        if not self.layer_norm_first:
+            x = self.layer_norm(x)
+
+        x = F.dropout(x, p=self.dropout, training=self.training)
+
+        # B x T x C -> T x B x C
+        x = x.transpose(0, 1)
+
+        layer_results = []
+        for i, layer in enumerate(self.layers):
+            dropout_probability = np.random.random()
+            if not self.training or (dropout_probability > self.layerdrop):
+                x, z = layer(x, self_attn_padding_mask=padding_mask, need_weights=False)
+                layer_results.append(x)
+
+        # T x B x C -> B x T x C
+        x = x.transpose(0, 1)
+
+        return x
+
+    def max_positions(self):
+        """Maximum output length supported by the encoder."""
+        return self.args.max_positions
+
+    def upgrade_state_dict_named(self, state_dict, name):
+        """Upgrade a (possibly old) state dict for new versions of fairseq."""
+        return state_dict
+
+
+class TransformerSentenceEncoderLayer(nn.Module):
+    """
+    Implements a Transformer Encoder Layer used in BERT/XLM style pre-trained
+    models.
+    """
+
+    def __init__(
+        self,
+        embedding_dim: float = 768,
+        ffn_embedding_dim: float = 3072,
+        num_attention_heads: float = 8,
+        dropout: float = 0.1,
+        attention_dropout: float = 0.1,
+        activation_dropout: float = 0.1,
+        activation_fn: str = "relu",
+        layer_norm_first: bool = False,
+    ) -> None:
+
+        super().__init__()
+        # Initialize parameters
+        self.embedding_dim = embedding_dim
+        self.dropout = dropout
+        self.activation_dropout = activation_dropout
+
+        # Initialize blocks
+        self.activation_fn = utils.get_activation_fn(activation_fn)
+        self.self_attn = MultiheadAttention(
+            self.embedding_dim,
+            num_attention_heads,
+            dropout=attention_dropout,
+            self_attention=True,
+        )
+
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(self.activation_dropout)
+        self.dropout3 = nn.Dropout(dropout)
+
+        self.layer_norm_first = layer_norm_first
+
+        # layer norm associated with the self attention layer
+        self.self_attn_layer_norm = LayerNorm(self.embedding_dim)
+        self.fc1 = nn.Linear(self.embedding_dim, ffn_embedding_dim)
+        self.fc2 = nn.Linear(ffn_embedding_dim, self.embedding_dim)
+
+        # layer norm associated with the position wise feed-forward NN
+        self.final_layer_norm = LayerNorm(self.embedding_dim)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        self_attn_mask: torch.Tensor = None,
+        self_attn_padding_mask: torch.Tensor = None,
+        need_weights: bool = False,
+        att_args=None,
+    ):
+        """
+        LayerNorm is applied either before or after the self-attention/ffn
+        modules similar to the original Transformer imlementation.
+        """
+        residual = x
+
+        if self.layer_norm_first:
+            x = self.self_attn_layer_norm(x)
+            x, attn = self.self_attn(
+                query=x,
+                key=x,
+                value=x,
+                key_padding_mask=self_attn_padding_mask,
+                need_weights=False,
+                attn_mask=self_attn_mask,
+            )
+            x = self.dropout1(x)
+            x = residual + x
+
+            residual = x
+            x = self.final_layer_norm(x)
+            x = self.activation_fn(self.fc1(x))
+            x = self.dropout2(x)
+            x = self.fc2(x)
+            x = self.dropout3(x)
+            x = residual + x
+        else:
+            x, attn = self.self_attn(
+                query=x,
+                key=x,
+                value=x,
+                key_padding_mask=self_attn_padding_mask,
+                need_weights=need_weights,
+            )
+
+            x = self.dropout1(x)
+            x = residual + x
+
+            x = self.self_attn_layer_norm(x)
+
+            residual = x
+            x = self.activation_fn(self.fc1(x))
+            x = self.dropout2(x)
+            x = self.fc2(x)
+            x = self.dropout3(x)
+            x = residual + x
+            x = self.final_layer_norm(x)
+
+        return x, attn
 
 if __name__ == '__main__':
 
-    B_SZ = 10
+    '''B_SZ = 10
 
-    X = torch.rand((B_SZ, 161, 1000))
-    WIDTHS = torch.LongTensor(B_SZ).random_(1600,1610)
+    device = torch.device("cuda")
 
-    model = Wav2Vec2Model(Wav2Vec2Config)
+    X = torch.rand((B_SZ, 161, 1000)).to(device)
+    WIDTHS = torch.LongTensor(B_SZ).random_(1600,1610).to(device)
 
-    out = model(X, WIDTHS)
+    #model = Wav2Vec2Model(Wav2Vec2Config)
+
+    model = torch.load('/media/data_dump/hemant/atul/ss_train1/Robust_ASR/enus_ssl_40/ssl_14/models/ckpt_final.pth', map_location=device)
+
+    out = model['models'].extract_enco_features(X, WIDTHS)
+
+    print(out[0].shape, out[1].shape)'''

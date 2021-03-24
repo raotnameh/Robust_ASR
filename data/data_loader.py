@@ -121,6 +121,8 @@ class SpectrogramParser(AudioParser):
             y = load_randomly_augmented_audio(audio_path, self.sample_rate)
         else:
             y = load_audio(audio_path)
+
+        #print(y.shape)
         if self.noiseInjector:
             add_noise = np.random.binomial(1, self.noise_prob)
             if add_noise:

@@ -84,12 +84,15 @@ class Decoder_loss():
 class ContrastiveLoss():
 
     def __init__(self):
-        pass
+        self.log_softmax = torch.nn.LogSoftmax(dim=1)
+        #self.loss = torch.nn.NLLLoss()
 
     def forward(self,logits):
-
+        
+        logits = logits.transpose(0, 2)
         logits_ = logits.reshape(-1, logits.size(-1))
         final_contranstive_loss = (torch.exp(logits_[:,0])/torch.sum(torch.exp(logits_[:,1:]), dim = 1))
+        final_contranstive_loss = -torch.log(final_contranstive_loss)
 
         return torch.mean(final_contranstive_loss)
 
@@ -105,8 +108,9 @@ def weights_(args, eps, accent, accent_dict):
 
     return disc_loss_weights
 
-def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001):
-    [i[0].eval() for i in models.values()]
+def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,labels,ssl_model, criteria,eps=0.0000000001):
+    #[i[0].eval() for i in models.values()]
+    models.eval()
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
     acc_weights = np.ones((len(accent)))*eps
@@ -131,17 +135,18 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
             discriminator_out = models['discriminator'][0](z_) # Discriminator network
             asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
         else:
-            x_, updated_lengths = models['pre'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
-            z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
+            z, updated_lengths = ssl_model['models'].extract_enco_features(inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+
+                #print(z.type(),updated_lengths.type())
+
+            asr_out, asr_out_sizes = models(z, updated_lengths.cpu())
+            #x_, updated_lengths = models['pre'][0](inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+            #z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
             #decoder_out = models['decoder'][0](z) # Decoder network
-            asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths.cpu()) # Predictor network
+            #asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths.cpu()) # Predictor network
 
             # print(asr_out.shape)
-            # exit()
-            asr_loss = models['predictor'][1](asr_out.transpose(0, 1).float(), targets, asr_out_sizes.cpu(), target_sizes).to(device)
-            asr_loss = asr_loss / updated_lengths.size(0)  # average the loss by minibatch
-            p_loss += asr_loss.item()
-            p_counter += 1
+            # exit(
 
         
         # print(asr_out.shape)
@@ -200,3 +205,31 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
         #     return wer, cer, num, length,  weighted_precision, weighted_recal, weighted_f1
     print(p_loss/p_counter)
     return wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy
+
+
+def validation_ssl(model, device, test_loader, args):
+
+    p_loss = 0
+    p_counter = 0
+
+    for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
+        
+        inputs, targets, input_percentages, target_sizes, accents = data
+        input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+
+        ssl_loss = ContrastiveLoss()
+
+
+        inputs = inputs.to(device)
+        
+        if args.train_asr:
+
+            out = model(inputs.squeeze(),input_sizes.type(torch.LongTensor).to(device))
+        
+            loss = ssl_loss.forward(out['x']) + 0.0*model.get_extra_losses(out)[0] #asr_loss + dec_loss
+            
+            p_loss += loss.item()
+            p_counter += 1
+
+        return float(p_loss)/p_counter
+
