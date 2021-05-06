@@ -79,10 +79,10 @@ parser.add_argument('--gamma', type= float, default= 1,
 parser.add_argument('--augment', dest='augment', action='store_true', help='Use random tempo and gain perturbations.')
 parser.add_argument('--noise-dir', default=None,
                     help='Directory to inject noise into audio. If default, noise Inject not added')
-parser.add_argument('--noise-prob', default=0.4, help='Probability of noise being added per sample')
-parser.add_argument('--noise-min', default=0.0,
+parser.add_argument('--noise-prob', default=0.25, help='Probability of noise being added per sample')
+parser.add_argument('--noise-min', default=0.1,
                     help='Minimum noise level to sample from. (1.0 means all noise, not original signal)', type=float)
-parser.add_argument('--noise-max', default=0.5,
+parser.add_argument('--noise-max', default=0.25,
                     help='Maximum noise levels to sample from. Maximum 1.0', type=float)
 parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
                     help='Use simple spectral augmentation on mel spectograms.')
@@ -159,6 +159,13 @@ if __name__ == '__main__':
             except: pass
         
         if not args.finetune: # If continuing training after the last epoch.
+            
+            dummy = {i:models[i][-1] for i in models}
+            for i in models:
+                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+                models[i][-1].load_state_dict(dummy[i])
+            del dummy
+            
             start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
                 # start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
@@ -220,7 +227,7 @@ if __name__ == '__main__':
         
         if not args.train_asr:
             # Forget Network
-            fnet = Forget(configPre()[-1]['out_channels'],configFN())
+            fnet = Forget(configE()[-1]['out_channels'],configFN())
             fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
             # Discriminator
@@ -261,7 +268,7 @@ if __name__ == '__main__':
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler,pin_memory=True)
 
-    test_loader = AudioDataLoader(test_dataset, batch_size=4*int(args.batch_size),
+    test_loader = AudioDataLoader(test_dataset, batch_size=2*int(args.batch_size),
                                   num_workers=args.num_workers,pin_memory=True)
 
     if not args.train_asr: 
@@ -390,7 +397,7 @@ if __name__ == '__main__':
                     # Forward pass
                     x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
                     z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
-                    m, updated_lengths = models['forget_net'][0](x_,updated_lengths_) # Forget network
+                    m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
                     z_ = z * m # Forget Operation
                     discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
                     # Loss             
@@ -436,8 +443,8 @@ if __name__ == '__main__':
                 # Forward pass
                 x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                 z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-                decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
-                m, updated_lengths_ = models['forget_net'][0](x_,updated_lengths_) # Forget network
+                # decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = models['discriminator'][0](z_, updated_lengths_) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
@@ -448,9 +455,9 @@ if __name__ == '__main__':
                 mask_regulariser_loss = (m * (1-m)).mean() * args.gamma
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
+                # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
             
-            loss = asr_loss + decoder_loss + mask_regulariser_loss
+            loss = asr_loss + mask_regulariser_loss #+ decoder_loss 
 
             scaler.scale(discriminator_loss).backward(retain_graph=True)
             for i_ in models.keys():
