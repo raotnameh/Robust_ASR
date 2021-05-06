@@ -57,7 +57,7 @@ parser.add_argument('--num-epochs', default=1, type=int,
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
 parser.add_argument('--disc-kl-loss', action='store_true',
                     help='use kl divergence loss for discriminator')
-parser.add_argument('--early-val', default=100, type=int,
+parser.add_argument('--early-val', default=10e-10, type=int,
                     help='Doing an early validation step')                    
                     
 # Model arguements
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     # Gpu setting
     device = torch.device("cuda" if args.cuda else "cpu")
 
-    # Where to save the models and training's metadata
+    # Where to save the models and training metadata
     save_folder = os.path.join(args.exp_name, 'models')
     tbd_logs = os.path.join(args.exp_name, 'tbd_logdir')
     loss_save = os.path.join(args.exp_name, 'train.log')
@@ -138,7 +138,7 @@ if __name__ == '__main__':
     best_wer, best_cer = None, None
     d_avg_loss, p_avg_loss, p_d_avg_loss, start_epoch = 0, 0, 0, 0
     poor_cer_list = []
-    eps = 0.0000000001 # epsilon value
+    eps = 0.0000000000001 # epsilon value
     start_iter = 0
     
     if args.continue_from:
@@ -165,10 +165,11 @@ if __name__ == '__main__':
                 start_iter = 0
             else:
                 start_iter += 1
-            best_wer = package['best_wer']
-            best_cer = package['best_cer']
-            poor_cer_list = package['poor_cer_list']
-            a = package['train.log']
+            if hvd.rank() == 0:
+                best_wer = package['best_wer']
+                best_cer = package['best_cer']
+                poor_cer_list = package['poor_cer_list']
+                a = package['train.log']
         else:
             start_iter = 0
             a = ""
@@ -178,7 +179,11 @@ if __name__ == '__main__':
         print(best_cer, best_wer, audio_conf,start_iter)
         print("loaded models succesfully")
     else:
-        a = ""
+        
+        if hvd.rank() == 0: 
+            a = ""
+            accent_list = sorted(accent, key=lambda x:accent[x])
+            a += f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
         #Loading the labels
         with open(args.labels_path) as label_file:
             labels = str(''.join(json.load(label_file)))
@@ -202,10 +207,10 @@ if __name__ == '__main__':
         encoder = Encoder(configPre()[-1]['out_channels'],configE())
         e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         models['encoder'] = [encoder, None, e_optimizer]
-        decoder = Decoder(configE()[-1]['out_channels'],configD())
-        d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        dec_loss = Decoder_loss(nn.MSELoss())
-        models['decoder'] = [decoder, dec_loss, d_optimizer]
+        # decoder = Decoder(configE()[-1]['out_channels'],configD())
+        # d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        # dec_loss = Decoder_loss(nn.MSELoss())
+        # models['decoder'] = [decoder, dec_loss, d_optimizer]
         
         # ASR
         asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
@@ -231,7 +236,8 @@ if __name__ == '__main__':
             # Printing the models
             print(nn.Sequential(OrderedDict( [(k,v[0]) for k,v in models.items()] )))
              # Printing the parameters of all the different modules 
-            [print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") for i in models.items()]
+            for i in models.items():
+                print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") 
             print(f"Total number of parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
             print(f"Initial learning rate: {print(models['encoder'][-1].param_groups[0]['lr'])}")
     
@@ -254,22 +260,20 @@ if __name__ == '__main__':
 
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler,pin_memory=True)
+
+    test_loader = AudioDataLoader(test_dataset, batch_size=4*int(args.batch_size),
+                                  num_workers=args.num_workers,pin_memory=True)
+
     if not args.train_asr: 
         disc_train_loader = AudioDataLoader(disc_train_dataset,
                                    num_workers=args.num_workers, batch_sampler=disc_train_sampler,pin_memory=True)    
         disc_train_sampler.shuffle(start_epoch)
         disc_ = iter(disc_train_loader)
 
-    test_loader = AudioDataLoader(test_dataset, batch_size=4*int(args.batch_size),
-                                  num_workers=args.num_workers,pin_memory=True)
-
-    if args.no_sorta_grad:
+    
+    if args.no_sorta_grad or args.continue_from:
         print("Shuffling batches for the following epochs")
         train_sampler.shuffle(start_epoch)
-    
-    if hvd.rank() == 0: 
-        accent_list = sorted(accent, key=lambda x:accent[x])
-        a += f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
 
     # HVD multi gpu training
     for i in models.keys():
@@ -278,7 +282,6 @@ if __name__ == '__main__':
         hvd.broadcast_optimizer_state(models[i][-1], root_rank=0)
         models[i][-1] = hvd.DistributedOptimizer(models[i][-1], named_parameters=models[i][0].named_parameters())
     
-    # tensorboard_count = 0
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
@@ -286,7 +289,6 @@ if __name__ == '__main__':
         p_counter, d_counter = eps, eps
 
         for i, (data) in enumerate(train_loader, start=start_iter):
-            # print((i+1)%5)
             if i == len(train_sampler):
                 break
             if args.dummy and i%2 == 1: break
@@ -339,13 +341,13 @@ if __name__ == '__main__':
                     # Forward pass                    
                     x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                     z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-                    decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                    # decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                     asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
                     # Loss         
                     asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
                     asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
-                    decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
-                    loss = asr_loss + decoder_loss
+                    # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
+                    loss = asr_loss #+ decoder_loss
 
                 p_loss = loss.item()
                 valid_loss, error = check_loss(loss, p_loss)

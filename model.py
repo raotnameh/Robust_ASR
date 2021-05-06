@@ -79,26 +79,29 @@ class block_B(nn.Module):
                 ])
             )
     def forward(self, x, lengths):
+        lengths = (lengths/self.stride + 0.5).to(lengths.dtype)
         # y = x # 32,161,148 # (batch_size, channels, seq_len)
         if self.sub_blocks != 1: initial = self.conv(x) 
         for i in range(len(self.layers)):
-            x = self.layers[i](x)
-            # y, lengths = self.maskconv1d(self.layers[i](y), lengths, self.stride)
+            # x = self.layers[i](x)
+            x = self.maskconv1d(self.layers[i](x), lengths)
         if self.sub_blocks != 1: 
-            x = self.last(x + initial)
-            # y, lengths = self.maskconv1d(self.last(y + self.conv(x)), lengths, self.stride)
-        return x, (lengths/self.stride + 0.5).to(lengths.dtype)
+            # x = self.last(x + initial)
+            x = self.maskconv1d(self.last(x + initial), lengths)
+        # exit()
+        return x, lengths
 
-    def maskconv1d(self,x,lengths, stride):
-        lengths = (lengths/stride + 0.5).to(lengths.dtype)
+    def maskconv1d(self,x,lengths):
+        # print(x.shape)
         max_len = x.size(2)
         idxs = torch.arange(max_len).to(lengths.dtype).to(lengths.device).expand(len(lengths), max_len)
         mask = idxs >= lengths.unsqueeze(1)
         x = x.masked_fill(mask.unsqueeze(1).to(device=x.device), 0)
+        # print(mask.shape)
+        # print(x.shape)
         
         del mask, idxs, max_len 
-        return x, lengths
-
+        return x
 
 class block_Deco(nn.Module):
     def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2, nonlinear=2, batch_norm = True):
