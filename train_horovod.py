@@ -89,9 +89,7 @@ parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
 
 # Mixed precision training
 parser.add_argument('--fp16', action='store_true',
-                    help='training using fp16')
-parser.add_argument('--using-new', action='store_true',
-                    help='using-new-weights')                    
+                    help='training using fp16')                  
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -145,7 +143,7 @@ if __name__ == '__main__':
     
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
-        models = package['models'] 
+        models = package['models']
         labels, audio_conf, version_, start_iter = package['labels'], package['audio_conf'], package['version'], package['start_iter']
         audio_conf['noise_dir'] = args.noise_dir
         audio_conf['noise_prob'] = args.noise_prob
@@ -159,17 +157,8 @@ if __name__ == '__main__':
                 del models['forget_net']
                 del models['discriminator']
             except: pass
-
         
         if not args.finetune: # If continuing training after the last epoch.
-            if args.using_new:
-                print(f"using new")
-                dummy = {i:models[i][-1] for i in models}
-                for i in models:
-                    models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-                    models[i][-1].load_state_dict(dummy[i])
-                del dummy
-            
             start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
                 # start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
@@ -205,7 +194,7 @@ if __name__ == '__main__':
         models = {} # All the models with their loss and optimizer are saved in this dict
         
         # Preprocessing
-        pre = Pre(161,configPre())
+        pre = Pre(161,configPre()) # 161 comes from the spectrogram feature for each time step.
         pre_optimizer = torch.optim.Adam(pre.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         models['preprocessing'] = [pre, None, pre_optimizer]
 
