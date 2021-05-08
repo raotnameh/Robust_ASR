@@ -20,6 +20,7 @@ class block_B(nn.Module):
                 nn.Sequential(
                     OrderedDict([
                     (f'conv_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
+                    (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                     ])
                 ) 
             )
@@ -27,7 +28,6 @@ class block_B(nn.Module):
                 self.layers.append(
                         nn.Sequential(
                             OrderedDict([
-                                (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                                 (f'relu_{name}', nn.ReLU()),
                                 (f'dropout_{name}', nn.Dropout(p=dropout)),
                             ])
@@ -72,12 +72,16 @@ class block_B(nn.Module):
                     (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                 ])
                 )        
-            self.last = nn.Sequential(
+            if batch_norm:
+                self.last = nn.Sequential(
                 OrderedDict([
                     (f'relu_{name}', nn.ReLU()),
                     (f'dropout_{name}', nn.Dropout(p=dropout)),
                 ])
-            )
+                )
+                
+            else: self.last = nn.Sequential()
+                
     def forward(self, x, lengths):
         lengths = (lengths/self.stride + 0.5).to(lengths.dtype)
         # y = x # 32,161,148 # (batch_size, channels, seq_len)
@@ -242,12 +246,22 @@ class Forget(nn.Module):
                     )
             )
             in_channels = info[i]['out_channels']
-
+        # self.last = nn.Sequential(
+        #             OrderedDict([
+        #             (f'sigmoid_Forget', nn.Sigmoid()),
+        #             (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
+        #             ])
+        #             )
+        self.last = nn.Sequential(
+                    OrderedDict([
+                    (f'softmax_Forget', nn.Softmax(dim=1)),
+                    (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
+                    ])
+                    )   
     def forward(self, x, lengths):
         for i in range(len(self.layers)):
-            # print(i, "-------",x.shape)
             x, lengths = self.layers[i](x, lengths,)
-        return x, lengths 
+        return self.last(x), lengths 
 
 
 class Encoder(nn.Module):

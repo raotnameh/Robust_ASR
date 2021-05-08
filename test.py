@@ -41,7 +41,7 @@ def forward_call(model_components, inputs, input_sizes, device,args):
     if args.use_decoder: decoder_out_e, _ = model_components[4](z, updated_lengths)
     # forget net forward pass.
     if model_components[1] is not None: 
-        m, _ = model_components[1](x_, updated_lengths)
+        m, _ = model_components[1](z, updated_lengths)
         z = z * m
         if args.use_decoder:  decoder_out_f, _ = model_components[4](z, updated_lengths)
     else: 

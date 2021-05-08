@@ -56,10 +56,10 @@ def configP(labels=29):
 
     return prepare_info(layers)
 
-def configFN(classes=1,nonlinear =0):
+def configFN():
     layers = [
         # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','nonlinear']
-        [5,11,1,512,0.3,1,True],
+        [1,11,1,512,0.3,1,False],
     ]
 
     return prepare_info(layers)

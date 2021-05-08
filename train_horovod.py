@@ -68,12 +68,14 @@ parser.add_argument('--train-asr', action='store_true',
 parser.add_argument('--silent', dest='silent', action='store_true', help='Turn off progress tracking per iteration')
 
 # Hyper parameters for the loss functions
-parser.add_argument('--alpha', type= float, default= 1,
+parser.add_argument('--alpha', type= float, default= 1e-5,
                     help= 'weight for reconstruction loss')
-parser.add_argument('--beta', type= float, default= 1,
+parser.add_argument('--beta', type= float, default= 1e-5,
                     help= 'weight for discriminator loss')              
-parser.add_argument('--gamma', type= float, default= 1,
-                    help= 'weight for regularisation')             
+parser.add_argument('--gamma', type= float, default= 1e-5,
+                    help= 'weight for regularisation') 
+parser.add_argument('--hyper-rate', type= float, default= 1.1,
+                    help= 'Hyper parameter rate')             
 
 # input augments
 parser.add_argument('--augment', dest='augment', action='store_true', help='Use random tempo and gain perturbations.')
@@ -281,7 +283,7 @@ if __name__ == '__main__':
     if args.no_sorta_grad or args.continue_from:
         print("Shuffling batches for the following epochs")
         train_sampler.shuffle(start_epoch)
-
+    # exit()
     # HVD multi gpu training
     for i in models.keys():
         models[i][0].to(device)
@@ -289,12 +291,16 @@ if __name__ == '__main__':
         hvd.broadcast_optimizer_state(models[i][-1], root_rank=0)
         models[i][-1] = hvd.DistributedOptimizer(models[i][-1], named_parameters=models[i][0].named_parameters())
     
+    alpha, beta, gamma = args.alpha, args.beta, args.gamma
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
-
+        if alpha <= 1.0: alpha = alpha * args.hyper_rate
+        if beta <= 1.0: beta = beta * args.hyper_rate
+        if gamma <= 1.0: gamma = gamma * args.hyper_rate
+        print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
                 break
@@ -439,6 +445,7 @@ if __name__ == '__main__':
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
             p_counter += 1
             
+
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
                 x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
@@ -449,13 +456,13 @@ if __name__ == '__main__':
                 discriminator_out = models['discriminator'][0](z_, updated_lengths_) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
                 # Loss                
-                discriminator_loss = models['discriminator'][1](discriminator_out, accents) * args.beta
+                discriminator_loss = models['discriminator'][1](discriminator_out, accents) * beta
                 p_d_loss = discriminator_loss.item()    
         
-                mask_regulariser_loss = (m * (1-m)).mean() * args.gamma
+                mask_regulariser_loss = (m * (1-m)).mean() * gamma
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
+                # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
             
             loss = asr_loss + mask_regulariser_loss #+ decoder_loss 
 
