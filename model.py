@@ -252,12 +252,13 @@ class Forget(nn.Module):
         #             (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
         #             ])
         #             )
-        self.last = nn.Sequential(
-                    OrderedDict([
-                    (f'softmax_Forget', nn.Softmax(dim=1)),
-                    (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
-                    ])
-                    )   
+        # self.last = nn.Sequential(
+        #             OrderedDict([
+        #             (f'softmax_Forget', nn.Softmax(dim=1)),
+        #             (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
+        #             ])
+        #             )   
+        self.last = nn.Sequential()
     def forward(self, x, lengths):
         for i in range(len(self.layers)):
             x, lengths = self.layers[i](x, lengths,)
