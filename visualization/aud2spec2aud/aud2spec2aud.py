@@ -15,11 +15,13 @@ import pickle
 
 class Aud2Spec2Aud():
     """
-        audio_path: Path to the audio that you want to play with
-        window_stride: Stride for the fft window (default: 0.01)
-        window_size: Size for the fft window (default: 0.02)
-        sample_rate: Rate at which audio is sampled to form a spectrogram (default: Hamming Window)
-        normalize: Whether the mag needs to be denormalized or not (default: False) 
+        A class which handles the conversion of audio to spectrogram and spectrogram to audio. Use the forward and the backward function for
+        relevant conversions.
+        Input -> audio_path: Path to the audio that you want to play with
+                 window_stride: Stride for the fft window (default: 0.01)
+                 window_size: Size for the fft window (default: 0.02)
+                 sample_rate: Rate at which audio is sampled to form a spectrogram (default: Hamming Window)
+                 normalize: Whether the mag needs to be denormalized or not (default: False) 
     """
 
     def __init__(self,audio_path,window_stride=0.01,window_size=0.02,sample_rate=16000,window= scipy.signal.hamming,normalize=False):
