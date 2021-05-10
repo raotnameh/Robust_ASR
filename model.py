@@ -254,6 +254,7 @@ class Forget(nn.Module):
             in_channels = info[i]['out_channels']
         # self.last = nn.Sequential(
         #             OrderedDict([
+            
         #             (f'batchnorm_Forget', nn.BatchNorm1d(info[i]['out_channels'])),
         #             (f'sigmoid_Forget', nn.ReLU()),
         #             (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
