@@ -20,7 +20,6 @@ class block_B(nn.Module):
                 nn.Sequential(
                     OrderedDict([
                     (f'conv_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
-                    (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                     ])
                 ) 
             )
@@ -28,6 +27,7 @@ class block_B(nn.Module):
                 self.layers.append(
                         nn.Sequential(
                             OrderedDict([
+                                (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                                 (f'relu_{name}', nn.ReLU()),
                                 (f'dropout_{name}', nn.Dropout(p=dropout)),
                             ])
@@ -71,16 +71,22 @@ class block_B(nn.Module):
                     (f'conv_{name}', nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)),
                     (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                 ])
-                )        
-            if batch_norm:
-                self.last = nn.Sequential(
+                ) 
+            self.last = nn.Sequential(
                 OrderedDict([
                     (f'relu_{name}', nn.ReLU()),
                     (f'dropout_{name}', nn.Dropout(p=dropout)),
                 ])
-                )
+                )       
+            # if batch_norm:
+            #     self.last = nn.Sequential(
+            #     OrderedDict([
+            #         (f'relu_{name}', nn.ReLU()),
+            #         (f'dropout_{name}', nn.Dropout(p=dropout)),
+            #     ])
+            #     )
                 
-            else: self.last = nn.Sequential()
+            # else: self.last = nn.Sequential()
                 
     def forward(self, x, lengths):
         lengths = (lengths/self.stride + 0.5).to(lengths.dtype)
@@ -248,21 +254,24 @@ class Forget(nn.Module):
             in_channels = info[i]['out_channels']
         # self.last = nn.Sequential(
         #             OrderedDict([
-        #             (f'sigmoid_Forget', nn.Sigmoid()),
+        #             (f'batchnorm_Forget', nn.BatchNorm1d(info[i]['out_channels'])),
+        #             (f'sigmoid_Forget', nn.ReLU()),
         #             (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
         #             ])
         #             )
         # self.last = nn.Sequential(
         #             OrderedDict([
+        #             # (f'batchnorm_Forget', nn.BatchNorm1d(info[i]['out_channels'])),
         #             (f'softmax_Forget', nn.Softmax(dim=1)),
-        #             (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
+        #             # (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
         #             ])
         #             )   
-        self.last = nn.Sequential()
+        # self.last = nn.Sequential()
     def forward(self, x, lengths):
         for i in range(len(self.layers)):
             x, lengths = self.layers[i](x, lengths,)
-        return self.last(x), lengths 
+        # x = self.last(x)
+        return x, lengths 
 
 
 class Encoder(nn.Module):
