@@ -298,8 +298,8 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 1.0: beta = beta * args.hyper_rate
-        if gamma <= 1.0: gamma = gamma * args.hyper_rate
+        if beta <= 10.0: beta = beta * args.hyper_rate
+        if gamma <= 10.0: gamma = gamma * args.hyper_rate
         print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
@@ -558,11 +558,11 @@ if __name__ == '__main__':
 
             # Exiting criteria
             terminate_train = False
-            if best_cer is None or best_cer > cer:
-                best_cer = cer
+            if best_cer is None or best_cer > wer:
+                best_cer = wer
                 poor_cer_list = []
             else:
-                poor_cer_list.append(cer)
+                poor_cer_list.append(wer)
                 if len(poor_cer_list) >= args.patience:
                     print("Exiting training loop...")
                     terminate_train = True
