@@ -188,7 +188,6 @@ if __name__ == '__main__':
         print(best_cer, best_wer, audio_conf,start_iter)
         print("loaded models succesfully")
     else:
-        
         if hvd.rank() == 0: 
             a = ""
             accent_list = sorted(accent, key=lambda x:accent[x])
