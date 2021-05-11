@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 from torch.distributed import get_rank
 from torch.distributed import get_world_size
 from torch.utils.data.sampler import Sampler
-
+import pickle
 import librosa
 import numpy as np
 import scipy.signal
@@ -95,13 +95,15 @@ class NoiseInjection(object):
 
 
 class SpectrogramParser(AudioParser):
-    def __init__(self, audio_conf, normalize=False, speed_volume_perturb=False, spec_augment=False):
+    def __init__(self, audio_conf, normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
         """
         Parses audio file into spectrogram with optional normalization and various augmentations
         :param audio_conf: Dictionary containing the sample rate, window and the window length/stride in seconds
         :param normalize(default False):  Apply standard mean and deviation normalization to audio tensor
         :param speed_volume_perturb(default False): Apply random tempo and gain perturbations
         :param spec_augment(default False): Apply simple spectral augmentation to mel spectograms
+        :param audio_recreation(default False): Make true if you want to save the phase,mean and std for audio recreation
+        :param metadata_reacreation_path(default empty string): Path to saving phase, mean and std for audio recreation. Add a path if audio_recreation is True.
         """
         super(SpectrogramParser, self).__init__()
         self.window_stride = audio_conf['window_stride']
@@ -115,6 +117,8 @@ class SpectrogramParser(AudioParser):
                                             audio_conf['noise_levels']) if audio_conf.get(
             'noise_dir') is not None else None
         self.noise_prob = audio_conf.get('noise_prob')
+        self.audio_recreation = audio_recreation
+        self.metadata_reacreation_path = metadata_reacreation_path
 
     def parse_audio(self, audio_path):
         if self.speed_volume_perturb:
@@ -135,14 +139,22 @@ class SpectrogramParser(AudioParser):
         # S = log(S+1)
         spect = np.log1p(spect)
         spect = torch.FloatTensor(spect)
+        mean = 0
+        std = 1
         if self.normalize:
             mean = spect.mean()
             std = spect.std()
             spect.add_(-mean)
             spect.div_(std)
+            mean = mean.item()
+            std = std.item()
 
         if self.spec_augment:
             spect = spec_augment(spect)
+        if self.audio_recreation:
+            save_dict = {"phase":phase,"mean":mean,"std":std,"audio_path":audio_path}
+            with open(f"{self.metadata_reacreation_path+audio_path.split('/')[-1][:-4]}.pickle", 'wb') as handle:
+                pickle.dump(save_dict,handle)
 
         return spect
 
@@ -151,7 +163,7 @@ class SpectrogramParser(AudioParser):
 
 
 class SpectrogramDataset(Dataset, SpectrogramParser):
-    def __init__(self, audio_conf, manifest_filepath, labels,accent=None,normalize=False, speed_volume_perturb=False, spec_augment=False):
+    def __init__(self, audio_conf, manifest_filepath, labels,accent=None,normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
         """
         Dataset that loads tensors via a csv containing file paths to audio files and transcripts separated by
         a comma. Each new line is a different sample. Example below:
@@ -165,6 +177,8 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         :param normalize: Apply standard mean and deviation normalization to audio tensor
         :param speed_volume_perturb(default False): Apply random tempo and gain perturbations
         :param spec_augment(default False): Apply simple spectral augmentation to mel spectograms
+        :param audio_recreation(default False): Make true if you want to save the phase,mean and std for audio recreation
+        :param metadata_reacreation_path(default empty string): Path to saving phase, mean and std for audio recreation. Add a path if audio_recreation is True.
         """
         with open(manifest_filepath) as f:
             ids = f.readlines()
@@ -176,17 +190,14 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
             self.accent =accent
         self.size = len(ids)
         self.labels_map = dict([(labels[i], i) for i in range(len(labels))])
-        super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment)
+        super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment,audio_recreation,metadata_reacreation_path)
 
     def __getitem__(self, index):
         sample = self.ids[index]
         audio_path, transcript_path = sample[0], sample[1]
         spect = self.parse_audio(audio_path)
         transcript = self.parse_transcript(transcript_path)
-        # if (len(sample)>2): #return accentData as well if it's available
-        #     print("using accents")
-        #     accentData = accents[sample[2]]
-        #     return spect,transcript,accentData
+        
         return spect, transcript,self.accent[sample[2]]
 
     def parse_transcript(self, transcript_path):
@@ -197,7 +208,6 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
 
     def __len__(self):
         return self.size
-
 
 def _collate_fn(batch):
     def func(p):
@@ -326,8 +336,7 @@ def augment_audio_with_sox(path, sample_rate, tempo, gain):
         y = load_audio(augmented_filename)
         return y
 
-
-def load_randomly_augmented_audio(path, sample_rate=16000, tempo_range=(0.85, 1.15),
+def load_randomly_augmented_audio(path, sample_rate=16000, tempo_range=(0.8, 1.2),
                                   gain_range=(-6, 8)):
     """
     Picks tempo and gain uniformly, applies it to the utterance by using sox utility.

@@ -3,20 +3,12 @@
 ## Building it from Source
 Install [PyTorch](https://github.com/pytorch/pytorch#installation) if you haven't already.
 
-Install this fork for Warp-CTC bindings:
-```
-git clone https://github.com/SeanNaren/warp-ctc.git
-cd warp-ctc; mkdir build; cd build; cmake ..; make
-export CUDA_HOME="/usr/local/cuda"
-cd ../pytorch_binding && python setup.py install
-```
-
 If you want decoding to support beam search with an optional language model, install ctcdecode:
 ```
 git clone --recursive https://github.com/parlance/ctcdecode.git
 cd ctcdecode && pip install .
 ```
-Install horovod for multi-gpu training. Make sure [nccl](https://developer.nvidia.com/nccl) is installed.
+Install horovod for multi-gpu training. Make sure [nccl](https://developer.nvidia.com/nccl) is installed. Install [opemmpi](https://edu.itp.phys.ethz.ch/hs12/programming_techniques/openmpi.pdf) if it is not. 
 ```
 HOROVOD_GPU_OPERATIONS=NCCL HOROVOD_WITH_PYTORCH=1 pip install horovod[pytorch]
 ```
@@ -27,7 +19,6 @@ pip install -r requirements.txt
 ```
 
 ## Training
-
 ### Dataset
 For dataset used for training and testing please refer to the section 4.1 in the [paper](https://arxiv.org/pdf/2011.12979.pdf).
 

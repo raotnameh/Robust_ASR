@@ -14,18 +14,18 @@ parser = argparse.ArgumentParser(description='Tune an ARPA LM based on a pre-tra
 parser.add_argument('--model-path', default='models/ckpt_final.pth',
                     help='Path to model file created by training')
 parser.add_argument('--saved-output', default="", type=str, help='Path to output from test.py')
-parser.add_argument('--num-workers', default=16, type=int, help='Number of parallel decodes to run')
+parser.add_argument('--num-workers', default=32, type=int, help='Number of parallel decodes to run')
 parser.add_argument('--output-path', default="tune_results.json", help="Where to save tuning results")
 parser.add_argument('--lm-alpha-from', default=0.0, type=float, help='Language model weight start tuning')
-parser.add_argument('--lm-alpha-to', default=3.0, type=float, help='Language model weight end tuning')
+parser.add_argument('--lm-alpha-to', default=6.0, type=float, help='Language model weight end tuning')
 parser.add_argument('--lm-beta-from', default=0.0, type=float,
                     help='Language model word bonus (all words) start tuning')
-parser.add_argument('--lm-beta-to', default=0.5, type=float,
+parser.add_argument('--lm-beta-to', default=6.0, type=float,
                     help='Language model word bonus (all words) end tuning')
-parser.add_argument('--lm-num-alphas', default=45, type=float, help='Number of alpha candidates for tuning')
-parser.add_argument('--lm-num-betas', default=8, type=float, help='Number of beta candidates for tuning')
+parser.add_argument('--lm-num-alphas', default=25, type=float, help='Number of alpha candidates for tuning')
+parser.add_argument('--lm-num-betas', default=15, type=float, help='Number of beta candidates for tuning')
 parser.add_argument('--lm-path', default='3-gram.pruned.3e-7.arpa', type=str, help='Path to language model')
-parser.add_argument('--lm-workers', default=16, type=int, help='Number of parallel lm workers to run')
+parser.add_argument('--lm-workers', default=24, type=int, help='Number of parallel lm workers to run')
 parser.add_argument('--beam-width', default=128, type=int, help='Number of top tokens to consider while decoding')
 args = parser.parse_args()
 
@@ -34,9 +34,7 @@ if args.lm_path is None:
     sys.exit(1)
 
 device = torch.device("cpu")
-model_components, accent_dict = load_model_components(device, args.model_path, False, False)
-labels = model_components[3].labels
-del model_components, accent_dict
+labels = load_model_components(device, args, test=False)
 
 saved_output = torch.load(args.saved_output)
 
@@ -66,7 +64,6 @@ def decode_dataset(params):
     cer = float(total_cer) / num_chars
 
     return [lm_alpha, lm_beta, wer * 100, cer * 100]
-
 
 if __name__ == '__main__':
     p = Pool(args.num_workers, init, [args.beam_width, labels.index('_'), args.lm_path])

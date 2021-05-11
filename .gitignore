@@ -1,6 +1,8 @@
 #save folder ignored
-save/
-
+save*/
+enus_40*/
+visual*/
+lm*/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

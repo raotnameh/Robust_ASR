@@ -1,21 +1,12 @@
 import torch
 import torch.distributed as dist
 import pandas as pd
-from model import DeepSpeech
 
 import os
 
 import json
 import numpy as np
 from tqdm.auto import tqdm
-
-def reduce_tensor(tensor, world_size, reduce_op_max=False):
-    rt = tensor.clone()
-    dist.all_reduce(rt, op=dist.reduce_op.MAX if reduce_op_max is True else dist.reduce_op.SUM)  # Default to sum
-    if not reduce_op_max:
-        rt /= world_size
-    return rt
-
 
 def check_loss(loss, loss_value):
     """
@@ -36,28 +27,22 @@ def check_loss(loss, loss_value):
     return loss_valid, error
 
 
-def load_model_components(device, model_path, forget, discriminator):
-    package = torch.load(model_path, map_location="cpu")
+def load_model_components(device, args,test=True):
+    package = torch.load(args.model_path, map_location="cpu")
     models = package['models']
-    encoder_model, asr_model = models['encoder'][0], models['predictor'][0]
-    forget_model = None if ('forget_net' not in models or not forget) else models['forget_net'][0]
-    disc_model = None if ('discriminator' not in models or not discriminator) else models['discriminator'][0]
+    [i[0].eval() for i in models.values()]
+    if not test: return package['labels']
+    pre, encoder_model, asr_model = models['preprocessing'][0], models['encoder'][0], models['predictor'][0]
+    decoder = models['decoder'][0] if args.use_decoder else None
+    forget_model = models['forget_net'][0] if args.forget_net else None
+    disc_model = models['discriminator'][0] if args.disc else None
 
-    model_components = [encoder_model, forget_model, disc_model, asr_model]
+    model_components = [encoder_model, forget_model, disc_model, asr_model, decoder, pre]
     for i in range(len(model_components)):
-        if model_components[i] is None:
-            continue
-        model_components[i].eval()
-        model_components[i].to(device)
-    return model_components, package['accent_dict'] # e, f, d, asr
-
-def load_model(device, model_path, use_half):
-    model = DeepSpeech.load_model(model_path)
-    model.eval()
-    model = model.to(device)
-    if use_half:
-        model = model.half()
-    return model
+        if model_components[i] is not None:
+            model_components[i].eval()
+            model_components[i].to(device)
+    return model_components, package['accent_dict'], package # e, f, d, asr
 
 
 class Decoder_loss():
@@ -67,12 +52,12 @@ class Decoder_loss():
     def forward(self,target, output, WIDTHS,device):
 
         #create mask for padded instances
-        mask = torch.arange(max(WIDTHS)).expand(len(WIDTHS), max(WIDTHS)) < WIDTHS.unsqueeze(1)
-        mask = mask.unsqueeze(1).unsqueeze(2)
-        mask = torch.repeat_interleave(mask, target.shape[2], 2).to(device)
-    
+        mask = torch.arange(target.shape[2]).expand(len(WIDTHS), target.shape[2]) < WIDTHS.unsqueeze(1)
+        mask = mask.unsqueeze(1)
+        mask = torch.repeat_interleave(mask, target.shape[1], 1).to(device)
+
         #limit output to input shape
-        output_inter = output[:,:,:target.shape[2],:target.shape[3]]
+        output_inter = output[:,:,:target.shape[2]]
 
         #do element-wise multiplication to zero padded instances
         outputs = output_inter*mask
@@ -82,19 +67,16 @@ class Decoder_loss():
 
         return loss_
 
-def weights_(args, eps, accent, accent_dict):
-    accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()
-    disc_loss_weights = torch.zeros(len(accent)) + eps
-    for accent_type_f in accent_counts:
-        if isinstance(accent_counts[accent_type_f], dict):
-            for accent_type_in_f in accent_counts[accent_type_f]:
-                if accent_type_in_f in accent_dict:
-                    disc_loss_weights[accent_dict[accent_type_in_f]] += accent_counts[accent_type_f][accent_type_in_f]
-    disc_loss_weights = torch.sum(disc_loss_weights) / disc_loss_weights
-
-    return disc_loss_weights
+def weights_(args, accent_dict):
+    accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()[len(accent_dict)]
+    disc_loss_weights = torch.zeros(len(accent_dict))
+    for count, i in enumerate(accent_dict):
+        if accent_dict[i] == count: disc_loss_weights[count] =  accent_counts[i]
+        else: print(f"error in weighted loss")
+    return torch.sum(disc_loss_weights) / disc_loss_weights
 
 def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001):
+    [i[0].eval() for i in models.values()]
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
     acc_weights = np.ones((len(accent)))*eps
@@ -111,14 +93,17 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
         
         # Forward pass
         if not args.train_asr:
-            z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-            m = models['forget_net'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Forget network
+            # Forward pass
+            x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
+            z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
+            m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
             z_ = z * m # Forget Operation
-            discriminator_out = models['discriminator'][0](z_) # Discriminator network
+            discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
             asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
         else:
-            z,updated_lengths = models['encoder'][0](inputs,input_sizes.type(torch.LongTensor).to(device)) # Encoder network
-            decoder_out = models['decoder'][0](z) # Decoder network
+            # Forward pass                  
+            x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
+            z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
             asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
 
         # Predictor metric
@@ -172,3 +157,9 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
         #     return wer, cer, num, length,  weighted_precision, weighted_recal, weighted_f1
 
     return wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy
+
+
+def Normalize(input):
+    '''
+    Normalize the input such that it only varies in the direction and not the magnitude
+    '''
