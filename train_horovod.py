@@ -296,7 +296,7 @@ if __name__ == '__main__':
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
-        if alpha <= 1.0: alpha = alpha * args.hyper_rate
+        if alpha <= 10.0: alpha = alpha * args.hyper_rate
         if beta <= 10.0: beta = beta * args.hyper_rate
         if gamma <= 10.0: gamma = gamma * args.hyper_rate
         print(alpha,beta,gamma)
