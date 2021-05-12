@@ -33,7 +33,7 @@ parser.add_argument('--window-size', default=.02, type=float, help='Window size 
 parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
 parser.add_argument('--window', default='hamming', help='Window type for spectrogram generation')
 parser.add_argument('--epochs', default=100, type=int, help='Number of training epochs')
-parser.add_argument('--patience', dest='patience', default=10, type=int, 
+parser.add_argument('--patience', dest='patience', default=25, type=int, 
                     help='Break the training loop if the WER does not decrease for a certain number of epochs')
 parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
@@ -567,6 +567,7 @@ if __name__ == '__main__':
                     terminate_train = True
             if terminate_train:
                 break
+
             d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
 
             # anneal lr

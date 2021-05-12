@@ -59,7 +59,7 @@ def configP(labels=29):
 def configFN():
     layers = [
         # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','nonlinear']
-        [3,11,1,512,0.3,1,True],
+        [1,11,1,512,0.3,1,True],
     ]
 
     return prepare_info(layers)
