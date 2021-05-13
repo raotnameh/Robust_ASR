@@ -152,7 +152,7 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
         torch.save(dict_m,f"{args.save_representation}/m.pth")
         torch.save(dict_d,f"{args.save_representation}/d.pth")
     if args.save_output: 
-        torch.save(output_data, f"{args.save_output}/out.pth")
+        torch.save(output_data, f"{args.save_output}.pth")
 
 if __name__ == '__main__':
     args = parser.parse_args()

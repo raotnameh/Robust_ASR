@@ -274,7 +274,7 @@ if __name__ == '__main__':
 
     if not args.train_asr: 
         disc_train_loader = AudioDataLoader(disc_train_dataset,
-                                   num_workers=args.num_workers, batch_sampler=disc_train_sampler,pin_memory=True)    
+                                   num_workers=args.update_rule, batch_sampler=disc_train_sampler,pin_memory=True)    
         disc_train_sampler.shuffle(start_epoch)
         disc_ = iter(disc_train_loader)
 

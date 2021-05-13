@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(description='Tune an ARPA LM based on a pre-tra
 parser.add_argument('--model-path', default='models/ckpt_final.pth',
                     help='Path to model file created by training')
 parser.add_argument('--saved-output', default="", type=str, help='Path to output from test.py')
-parser.add_argument('--num-workers', default=32, type=int, help='Number of parallel decodes to run')
+parser.add_argument('--num-workers', default=16, type=int, help='Number of parallel decodes to run')
 parser.add_argument('--output-path', default="tune_results.json", help="Where to save tuning results")
 parser.add_argument('--lm-alpha-from', default=0.0, type=float, help='Language model weight start tuning')
 parser.add_argument('--lm-alpha-to', default=6.0, type=float, help='Language model weight end tuning')
@@ -25,8 +25,8 @@ parser.add_argument('--lm-beta-to', default=6.0, type=float,
 parser.add_argument('--lm-num-alphas', default=25, type=float, help='Number of alpha candidates for tuning')
 parser.add_argument('--lm-num-betas', default=15, type=float, help='Number of beta candidates for tuning')
 parser.add_argument('--lm-path', default='3-gram.pruned.3e-7.arpa', type=str, help='Path to language model')
-parser.add_argument('--lm-workers', default=24, type=int, help='Number of parallel lm workers to run')
-parser.add_argument('--beam-width', default=128, type=int, help='Number of top tokens to consider while decoding')
+parser.add_argument('--lm-workers', default=2, type=int, help='Number of parallel lm workers to run')
+parser.add_argument('--beam-width', default=64, type=int, help='Number of top tokens to consider while decoding')
 args = parser.parse_args()
 
 if args.lm_path is None:

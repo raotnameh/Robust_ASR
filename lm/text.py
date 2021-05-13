@@ -23,17 +23,17 @@ txt = [i.split(',')[-2].strip() for i in out]
 
 def txt_save(dummy):
     a = ''
-    for i in tqdm(set(dummy)):
+    for i in dummy:
         a+=i + '\n'
     return a
 
 def run(get_txt, txt):
-    with ProcessPoolExecutor(max_workers=48) as executor:
+    with ProcessPoolExecutor(max_workers=64) as executor:
         results = list(tqdm((executor.map(get_txt, txt)), total=len(txt)))
     return results
 
 print("starting the processes")
-temp = run(get_txt, txt)
+temp = set(run(get_txt, txt))
 print("saving the files")
 with open(args.save + ".txt","w") as f:
         f.write(txt_save(temp))

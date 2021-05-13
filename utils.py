@@ -68,7 +68,10 @@ class Decoder_loss():
         return loss_
 
 def weights_(args, accent_dict):
-    accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()[len(accent_dict)]
+    accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()[2]#
+    # print(accent_counts)
+    # exit()
+    # # [len(accent_dict)]
     disc_loss_weights = torch.zeros(len(accent_dict))
     for count, i in enumerate(accent_dict):
         if accent_dict[i] == count: disc_loss_weights[count] =  accent_counts[i]
