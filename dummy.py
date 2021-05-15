@@ -1,8 +1,8 @@
-a = 0.0015
+a = 0.00001
 m = 0
 
 while True:
-    a = a*0.85
+    a = a*1.25
     m +=1
-    if a < 0.000001: break
+    if a > 10: break
     print(m,a)
