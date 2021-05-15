@@ -214,10 +214,10 @@ if __name__ == '__main__':
         encoder = Encoder(configPre()[-1]['out_channels'],configE())
         e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         models['encoder'] = [encoder, None, e_optimizer]
-        # decoder = Decoder(configE()[-1]['out_channels'],configD())
-        # d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        # dec_loss = Decoder_loss(nn.MSELoss())
-        # models['decoder'] = [decoder, dec_loss, d_optimizer]
+        decoder = Decoder(configE()[-1]['out_channels'],configD())
+        d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+        dec_loss = Decoder_loss(nn.MSELoss())
+        models['decoder'] = [decoder, dec_loss, d_optimizer]
         
         # ASR
         asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
@@ -295,7 +295,7 @@ if __name__ == '__main__':
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
-        if alpha <= 10.0: alpha = alpha * args.hyper_rate
+        if alpha <= 1.0: alpha = alpha * args.hyper_rate
         if beta <= 1.0: beta = beta * args.hyper_rate
         if gamma <= 1.0: gamma = gamma * args.hyper_rate
         
@@ -353,13 +353,13 @@ if __name__ == '__main__':
                     # Forward pass                    
                     x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                     z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-                    # decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                    decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                     asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
                     # Loss         
                     asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
                     asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
-                    # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
-                    loss = asr_loss #+ decoder_loss
+                    decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
+                    loss = asr_loss + decoder_loss
 
                 p_loss = loss.item()
                 valid_loss, error = check_loss(loss, p_loss)
