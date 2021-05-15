@@ -164,17 +164,16 @@ if __name__ == '__main__':
             
             dummy = {i:models[i][-1] for i in models}
             for i in models:
-                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=models['lr'],weight_decay=1e-4,amsgrad=True)
                 models[i][-1].load_state_dict(dummy[i])
             del dummy
-            
+
             start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
                 # start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
                 start_iter = 0
             else:
                 start_iter += 1
-            if hvd.rank() == 0:
                 best_wer = package['best_wer']
                 best_cer = package['best_cer']
                 poor_cer_list = package['poor_cer_list']
@@ -185,7 +184,7 @@ if __name__ == '__main__':
             version_ = args.version
             for i in models:
                 models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        print(best_cer, best_wer, audio_conf,start_iter)
+        # print(best_cer, best_wer, audio_conf,start_iter)
         print("loaded models succesfully")
     else:
         if hvd.rank() == 0: 
@@ -269,7 +268,7 @@ if __name__ == '__main__':
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler,pin_memory=True)
 
-    test_loader = AudioDataLoader(test_dataset, batch_size=2*int(args.batch_size),
+    test_loader = AudioDataLoader(test_dataset, batch_size=args.batch_size,
                                   num_workers=args.num_workers,pin_memory=True)
 
     if not args.train_asr: 
@@ -297,8 +296,9 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 10.0: alpha = alpha * args.hyper_rate
-        if beta <= 10.0: beta = beta * args.hyper_rate
-        if gamma <= 10.0: gamma = gamma * args.hyper_rate
+        if beta <= 1.0: beta = beta * args.hyper_rate
+        if gamma <= 1.0: gamma = gamma * args.hyper_rate
+        
         print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
@@ -318,7 +318,7 @@ if __name__ == '__main__':
                         save[s_].append(models[s_][0]) 
                         save[s_].append(models[s_][1]) 
                         save[s_].append(models[s_][2].state_dict()) 
-                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**epoch)}
                     torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
                     del save
             
@@ -540,7 +540,7 @@ if __name__ == '__main__':
                     save[s_].append(models[s_][0]) 
                     save[s_].append(models[s_][1]) 
                     save[s_].append(models[s_][2].state_dict()) 
-                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**epoch)}
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
                 del save
                 
@@ -551,7 +551,7 @@ if __name__ == '__main__':
                     save[s_].append(models[s_][0]) 
                     save[s_].append(models[s_][1]) 
                     save[s_].append(models[s_][2].state_dict()) 
-                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**epoch)}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
                 del save
 

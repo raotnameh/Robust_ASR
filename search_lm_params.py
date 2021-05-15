@@ -25,7 +25,7 @@ parser.add_argument('--lm-beta-to', default=6.0, type=float,
 parser.add_argument('--lm-num-alphas', default=25, type=float, help='Number of alpha candidates for tuning')
 parser.add_argument('--lm-num-betas', default=15, type=float, help='Number of beta candidates for tuning')
 parser.add_argument('--lm-path', default='3-gram.pruned.3e-7.arpa', type=str, help='Path to language model')
-parser.add_argument('--lm-workers', default=2, type=int, help='Number of parallel lm workers to run')
+parser.add_argument('--lm-workers', default=1, type=int, help='Number of parallel lm workers to run')
 parser.add_argument('--beam-width', default=64, type=int, help='Number of top tokens to consider while decoding')
 args = parser.parse_args()
 
