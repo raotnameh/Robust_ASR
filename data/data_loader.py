@@ -41,7 +41,7 @@ def get_accents(path):
         print("updating accents")
         accentList = list(pd.read_csv(path,header=None)[2].unique())
         accentList.sort()
-        accent = {val : idx  for idx, val in enumerate(accentList)}
+        accent = {str(val) : idx  for idx, val in enumerate(accentList)}
     return accent
 
 class AudioParser(object):
@@ -197,7 +197,6 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         audio_path, transcript_path = sample[0], sample[1]
         spect = self.parse_audio(audio_path)
         transcript = self.parse_transcript(transcript_path)
-        
         return spect, transcript,self.accent[sample[2]]
 
     def parse_transcript(self, transcript_path):
