@@ -59,7 +59,8 @@ parser.add_argument('--disc-kl-loss', action='store_true',
                     help='use kl divergence loss for discriminator')
 parser.add_argument('--early-val', default=10e-10, type=int,
                     help='Doing an early validation step')                    
-                    
+parser.add_argument('--warmup', default=None, help='start-from from checkpoint model')
+
 # Model arguements
 parser.add_argument('--update-rule', default=2, type=int,
                     help='train the discriminator k times')
@@ -202,28 +203,33 @@ if __name__ == '__main__':
                             noise_dir=args.noise_dir,
                             noise_prob=args.noise_prob,
                             noise_levels=(args.noise_min, args.noise_max))
+        if not args.warmup:
+            models = {} # All the models with their loss and optimizer are saved in this dict
+            
+            # Preprocessing
+            pre = Pre(161,configPre()) # 161 comes from the spectrogram feature for each time step.
+            pre_optimizer = torch.optim.Adam(pre.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            models['preprocessing'] = [pre, None, pre_optimizer]
 
-        models = {} # All the models with their loss and optimizer are saved in this dict
-        
-        # Preprocessing
-        pre = Pre(161,configPre()) # 161 comes from the spectrogram feature for each time step.
-        pre_optimizer = torch.optim.Adam(pre.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        models['preprocessing'] = [pre, None, pre_optimizer]
-
-        # Encoder and Decoder
-        encoder = Encoder(configPre()[-1]['out_channels'],configE())
-        e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        models['encoder'] = [encoder, None, e_optimizer]
-        decoder = Decoder(configE()[-1]['out_channels'],configD())
-        d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        dec_loss = Decoder_loss(nn.MSELoss())
-        models['decoder'] = [decoder, dec_loss, d_optimizer]
-        
-        # ASR
-        asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
-        asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        criterion = nn.CTCLoss(reduction='none')#CTCLoss()
-        models['predictor'] = [asr, criterion, asr_optimizer]
+            # Encoder and Decoder
+            encoder = Encoder(configPre()[-1]['out_channels'],configE())
+            e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            models['encoder'] = [encoder, None, e_optimizer]
+            decoder = Decoder(configE()[-1]['out_channels'],configD())
+            d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            dec_loss = Decoder_loss(nn.MSELoss())
+            models['decoder'] = [decoder, dec_loss, d_optimizer]
+            
+            # ASR
+            asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
+            asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            criterion = nn.CTCLoss(reduction='none')#CTCLoss()
+            models['predictor'] = [asr, criterion, asr_optimizer]
+        elif args.warmup and not args.train_asr:
+            package = torch.load(args.warmup, map_location=(f"cuda" if args.cuda else "cpu"))
+            models = package['models']
+            for i in models:
+                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         
         if not args.train_asr:
             # Forget Network
@@ -452,7 +458,7 @@ if __name__ == '__main__':
                 # Forward pass
                 x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                 z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-                # decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                 m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = models['discriminator'][0](z_, updated_lengths_) # Discriminator network
@@ -464,9 +470,9 @@ if __name__ == '__main__':
                 mask_regulariser_loss = (m * (1-m)).mean() * gamma
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
+                decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
             
-            loss = asr_loss + mask_regulariser_loss #+ decoder_loss 
+            loss = asr_loss + mask_regulariser_loss + decoder_loss 
 
             scaler.scale(discriminator_loss).backward(retain_graph=True)
             for i_ in models.keys():
