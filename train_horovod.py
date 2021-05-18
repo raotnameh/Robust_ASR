@@ -410,8 +410,9 @@ if __name__ == '__main__':
                 accents_ = torch.tensor(accents_).to(device)
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
-                    x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
-                    z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
+                    with torch.no_grad():
+                        x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
+                        z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
                     m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
                     z_ = z * m # Forget Operation
                     discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
