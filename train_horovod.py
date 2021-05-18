@@ -147,6 +147,7 @@ if __name__ == '__main__':
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
         models = package['models']
+        a = ''
         labels, audio_conf, version_, start_iter = package['labels'], package['audio_conf'], package['version'], package['start_iter']
         audio_conf['noise_dir'] = args.noise_dir
         audio_conf['noise_prob'] = args.noise_prob
@@ -165,7 +166,7 @@ if __name__ == '__main__':
             
             dummy = {i:models[i][-1] for i in models}
             for i in models:
-                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=models['lr'],weight_decay=1e-4,amsgrad=True)
+                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=package['lr'],weight_decay=1e-4,amsgrad=True)
                 models[i][-1].load_state_dict(dummy[i])
             del dummy
 
@@ -324,7 +325,7 @@ if __name__ == '__main__':
                         save[s_].append(models[s_][0]) 
                         save[s_].append(models[s_][1]) 
                         save[s_].append(models[s_][2].state_dict()) 
-                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**epoch)}
+                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                     torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
                     del save
             
@@ -366,7 +367,7 @@ if __name__ == '__main__':
                     asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
                     decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) 
                 
-                    loss = asr_loss + (decoder_loss * args.alpha)
+                    loss = asr_loss + (decoder_loss * alpha)
 
                 valid_loss, error = check_loss(loss, loss.item())
                 if valid_loss:
@@ -549,7 +550,7 @@ if __name__ == '__main__':
                     save[s_].append(models[s_][0]) 
                     save[s_].append(models[s_][1]) 
                     save[s_].append(models[s_][2].state_dict()) 
-                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**epoch)}
+                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
                 del save
                 
@@ -560,7 +561,7 @@ if __name__ == '__main__':
                     save[s_].append(models[s_][0]) 
                     save[s_].append(models[s_][1]) 
                     save[s_].append(models[s_][2].state_dict()) 
-                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**epoch)}
+                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
                 del save
 
