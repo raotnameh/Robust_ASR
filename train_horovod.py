@@ -455,12 +455,12 @@ if __name__ == '__main__':
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
             p_counter += 1
             
-
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
-                x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
-                z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-                decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                with torch.no_grad():
+                    x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
+                    z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
+                # decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                 m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = models['discriminator'][0](z_, updated_lengths_) # Discriminator network
@@ -472,9 +472,9 @@ if __name__ == '__main__':
                 mask_regulariser_loss = (m * (1-m)).mean() * gamma
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
+                # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
             
-            loss = asr_loss + mask_regulariser_loss + decoder_loss 
+            loss = asr_loss + mask_regulariser_loss #+ decoder_loss 
 
             scaler.scale(discriminator_loss).backward(retain_graph=True)
             for i_ in models.keys():
