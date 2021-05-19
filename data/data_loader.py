@@ -41,7 +41,7 @@ def get_accents(path):
         print("updating accents")
         accentList = list(pd.read_csv(path,header=None)[2].unique())
         accentList.sort()
-        accent = {val : idx  for idx, val in enumerate(accentList)}
+        accent = {str(val) : idx  for idx, val in enumerate(accentList)}
     return accent
 
 class AudioParser(object):
