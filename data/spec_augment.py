@@ -41,7 +41,7 @@ import random
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from .sparse_image_warp import sparse_image_warp
+from sparse_image_warp import sparse_image_warp
 import torch
 
 
@@ -92,7 +92,7 @@ def spec_augment(mel_spectrogram, time_warping_para=40, frequency_masking_para=2
     tau = mel_spectrogram.shape[2]
 
     # Step 1 : Time warping
-    warped_mel_spectrogram = time_warp(mel_spectrogram)
+    warped_mel_spectrogram = mel_spectrogram#time_warp(mel_spectrogram)
 
     # Step 2 : Frequency masking
     for i in range(frequency_mask_num):
