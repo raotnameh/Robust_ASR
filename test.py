@@ -109,9 +109,6 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
                 total_cer += cer_inst
                 num_tokens += len(reference.split())
                 num_chars += len(reference.replace(' ', ''))
-
-            wer = float(total_wer) / num_tokens
-            cer = float(total_cer) / num_chars
     
             if disc_out is not None:
                 # Discriminator metrics: fill in the confusion matrix.
@@ -122,6 +119,9 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
                         num = num + 1
                     conf_mat[accents[j], predicted[j].item()] += 1
                 length = length + len(accents)
+                
+        wer = float(total_wer) / num_tokens
+        cer = float(total_cer) / num_chars
 
     if model_components[2] is not None: # if discriminator is present.
         # Discriminator metrics: compute metrics using confustion metrics.
