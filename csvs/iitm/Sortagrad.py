@@ -7,11 +7,11 @@ def get_length(input_video):
     result = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', input_video.split(',')[0]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     return [input_video,float(result.stdout)]
 
-files = glob.glob("eng_train.csv")
-save_file = 'trainf.csv'
+files = glob.glob("eng_dev.csv")
+save_file = 'dev.csv'
 num_workers = 64
 max_duration = 30.0
-min_duration = 0.5
+min_duration = 0.0
 print(files)
 
 def csv_(dummy):
