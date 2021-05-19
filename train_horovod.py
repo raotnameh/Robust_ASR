@@ -33,7 +33,7 @@ parser.add_argument('--window-size', default=.02, type=float, help='Window size 
 parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
 parser.add_argument('--window', default='hamming', help='Window type for spectrogram generation')
 parser.add_argument('--epochs', default=100, type=int, help='Number of training epochs')
-parser.add_argument('--patience', dest='patience', default=10, type=int, 
+parser.add_argument('--patience', dest='patience', default=25, type=int, 
                     help='Break the training loop if the WER does not decrease for a certain number of epochs')
 parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
@@ -59,7 +59,8 @@ parser.add_argument('--disc-kl-loss', action='store_true',
                     help='use kl divergence loss for discriminator')
 parser.add_argument('--early-val', default=10e-10, type=int,
                     help='Doing an early validation step')                    
-                    
+parser.add_argument('--warmup', default=None, help='start-from from checkpoint model')
+
 # Model arguements
 parser.add_argument('--update-rule', default=2, type=int,
                     help='train the discriminator k times')
@@ -146,6 +147,7 @@ if __name__ == '__main__':
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
         models = package['models']
+        a = ''
         labels, audio_conf, version_, start_iter = package['labels'], package['audio_conf'], package['version'], package['start_iter']
         audio_conf['noise_dir'] = args.noise_dir
         audio_conf['noise_prob'] = args.noise_prob
@@ -164,17 +166,16 @@ if __name__ == '__main__':
             
             dummy = {i:models[i][-1] for i in models}
             for i in models:
-                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=package['lr'],weight_decay=1e-4,amsgrad=True)
                 models[i][-1].load_state_dict(dummy[i])
             del dummy
-            
+
             start_epoch = package['start_epoch']  # Index start at 0 for training
             if start_iter is None:
                 # start_epoch += 1  # We saved model after epoch finished, start at the next epoch.
                 start_iter = 0
             else:
                 start_iter += 1
-            if hvd.rank() == 0:
                 best_wer = package['best_wer']
                 best_cer = package['best_cer']
                 poor_cer_list = package['poor_cer_list']
@@ -185,7 +186,7 @@ if __name__ == '__main__':
             version_ = args.version
             for i in models:
                 models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        print(best_cer, best_wer, audio_conf,start_iter)
+        # print(best_cer, best_wer, audio_conf,start_iter)
         print("loaded models succesfully")
     else:
         if hvd.rank() == 0: 
@@ -203,28 +204,33 @@ if __name__ == '__main__':
                             noise_dir=args.noise_dir,
                             noise_prob=args.noise_prob,
                             noise_levels=(args.noise_min, args.noise_max))
+        if not args.warmup:
+            models = {} # All the models with their loss and optimizer are saved in this dict
+            
+            # Preprocessing
+            pre = Pre(161,configPre()) # 161 comes from the spectrogram feature for each time step.
+            pre_optimizer = torch.optim.Adam(pre.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            models['preprocessing'] = [pre, None, pre_optimizer]
 
-        models = {} # All the models with their loss and optimizer are saved in this dict
-        
-        # Preprocessing
-        pre = Pre(161,configPre()) # 161 comes from the spectrogram feature for each time step.
-        pre_optimizer = torch.optim.Adam(pre.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        models['preprocessing'] = [pre, None, pre_optimizer]
-
-        # Encoder and Decoder
-        encoder = Encoder(configPre()[-1]['out_channels'],configE())
-        e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        models['encoder'] = [encoder, None, e_optimizer]
-        # decoder = Decoder(configE()[-1]['out_channels'],configD())
-        # d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        # dec_loss = Decoder_loss(nn.MSELoss())
-        # models['decoder'] = [decoder, dec_loss, d_optimizer]
-        
-        # ASR
-        asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
-        asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-        criterion = nn.CTCLoss(reduction='none')#CTCLoss()
-        models['predictor'] = [asr, criterion, asr_optimizer]
+            # Encoder and Decoder
+            encoder = Encoder(configPre()[-1]['out_channels'],configE())
+            e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            models['encoder'] = [encoder, None, e_optimizer]
+            decoder = Decoder(configE()[-1]['out_channels'],configD())
+            d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            dec_loss = Decoder_loss(nn.MSELoss())
+            models['decoder'] = [decoder, dec_loss, d_optimizer]
+            
+            # ASR
+            asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
+            asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            criterion = nn.CTCLoss(reduction='none')#CTCLoss()
+            models['predictor'] = [asr, criterion, asr_optimizer]
+        elif args.warmup and not args.train_asr:
+            package = torch.load(args.warmup, map_location=(f"cuda" if args.cuda else "cpu"))
+            models = package['models']
+            for i in models:
+                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         
         if not args.train_asr:
             # Forget Network
@@ -269,12 +275,12 @@ if __name__ == '__main__':
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler,pin_memory=True)
 
-    test_loader = AudioDataLoader(test_dataset, batch_size=2*int(args.batch_size),
+    test_loader = AudioDataLoader(test_dataset, batch_size=args.batch_size,
                                   num_workers=args.num_workers,pin_memory=True)
 
     if not args.train_asr: 
         disc_train_loader = AudioDataLoader(disc_train_dataset,
-                                   num_workers=args.num_workers, batch_sampler=disc_train_sampler,pin_memory=True)    
+                                   num_workers=args.update_rule, batch_sampler=disc_train_sampler,pin_memory=True)    
         disc_train_sampler.shuffle(start_epoch)
         disc_ = iter(disc_train_loader)
 
@@ -297,8 +303,9 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 10.0: beta = beta * args.hyper_rate
-        if gamma <= 10.0: gamma = gamma * args.hyper_rate
+        if beta <= 1.0: beta = beta * args.hyper_rate
+        if gamma <= 1.0: gamma = gamma * args.hyper_rate
+        
         print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
@@ -318,7 +325,7 @@ if __name__ == '__main__':
                         save[s_].append(models[s_][0]) 
                         save[s_].append(models[s_][1]) 
                         save[s_].append(models[s_][2].state_dict()) 
-                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                     torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
                     del save
             
@@ -353,16 +360,16 @@ if __name__ == '__main__':
                     # Forward pass                    
                     x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                     z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-                    # decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                    decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                     asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
                     # Loss         
                     asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
                     asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
-                    # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * args.alpha
-                    loss = asr_loss #+ decoder_loss
+                    decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) 
+                
+                    loss = asr_loss + (decoder_loss * alpha)
 
-                p_loss = loss.item()
-                valid_loss, error = check_loss(loss, p_loss)
+                valid_loss, error = check_loss(loss, loss.item())
                 if valid_loss:
                     scaler.scale(loss).backward()
                     for i_ in models.keys():
@@ -370,16 +377,19 @@ if __name__ == '__main__':
                         with models[i_][-1].skip_synchronize():
                             scaler.step(models[i_][-1])
                     scaler.update()
+                    p_loss = asr_loss.item()
+                    d_loss = decoder_loss.item() 
                 else: 
                     print(error)
                     print("Skipping grad update")
-                    p_loss = 0.0
-                
+                    p_loss, d_loss = 0.0, 0.0
+                d_avg_loss += d_loss
                 p_avg_loss += p_loss
                 if hvd.rank() == 0:
                     # Logging to tensorboard.
                     writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
-                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
+                    writer.add_scalar('Train/Decodder-Avergae-Loss-Cur-Epoch', d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
+                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
                 continue
             
             if args.num_epochs > epoch: update_rule = 1
@@ -449,7 +459,7 @@ if __name__ == '__main__':
                 # Forward pass
                 x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                 z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-                # decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                 m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = models['discriminator'][0](z_, updated_lengths_) # Discriminator network
@@ -461,9 +471,9 @@ if __name__ == '__main__':
                 mask_regulariser_loss = (m * (1-m)).mean() * gamma
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
+                decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
             
-            loss = asr_loss + mask_regulariser_loss #+ decoder_loss 
+            loss = asr_loss + mask_regulariser_loss + decoder_loss 
 
             scaler.scale(discriminator_loss).backward(retain_graph=True)
             for i_ in models.keys():
@@ -540,7 +550,7 @@ if __name__ == '__main__':
                     save[s_].append(models[s_][0]) 
                     save[s_].append(models[s_][1]) 
                     save[s_].append(models[s_][2].state_dict()) 
-                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
                 del save
                 
@@ -551,7 +561,7 @@ if __name__ == '__main__':
                     save[s_].append(models[s_][0]) 
                     save[s_].append(models[s_][1]) 
                     save[s_].append(models[s_][2].state_dict()) 
-                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels}
+                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
                 del save
 
@@ -567,6 +577,7 @@ if __name__ == '__main__':
                     terminate_train = True
             if terminate_train:
                 break
+
             d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
 
             # anneal lr

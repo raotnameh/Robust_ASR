@@ -4,6 +4,7 @@ import pandas as pd
 
 import os
 
+import time
 import json
 import numpy as np
 from tqdm.auto import tqdm
@@ -68,7 +69,10 @@ class Decoder_loss():
         return loss_
 
 def weights_(args, accent_dict):
-    accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()[len(accent_dict)]
+    accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()[2]#
+    # print(accent_counts)
+    # exit()
+    # # [len(accent_dict)]
     disc_loss_weights = torch.zeros(len(accent_dict))
     for count, i in enumerate(accent_dict):
         if accent_dict[i] == count: disc_loss_weights[count] =  accent_counts[i]
@@ -105,7 +109,7 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
             x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
             z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
             asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
-
+    
         # Predictor metric
         split_targets = []
         offset = 0
@@ -124,9 +128,7 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
             num_tokens += len(reference.split())
             num_chars += len(reference.replace(' ', ''))
 
-        wer = float(total_wer) / num_tokens
-        cer = float(total_cer) / num_chars
-
+        
         if not args.train_asr:
             # Discriminator metrics: fill in the confusion matrix.
             out, predicted = torch.max(discriminator_out, 1)
@@ -136,26 +138,28 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
                     num = num + 1
                 conf_mat[accents[j], predicted[j].item()] += 1
             length = length + len(accents)
-        
-        # add comment janvijay
-        tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
-        for acc_type in range(len(accent)):
-            tps[acc_type] = conf_mat[acc_type, acc_type]
-            fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
-            fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
-            tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
-        class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+tps)
-        class_wise_f1 = 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
-        macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
-        weighted_precision, weighted_recall = ((acc_weights / acc_weights.sum()) * class_wise_precision).sum(), ((acc_weights / acc_weights.sum()) * class_wise_recall).sum()
-        weighted_f1 = 2 * weighted_precision * weighted_recall / (weighted_precision + weighted_recall)
-        micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
-        micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
+    
+    # add comment janvijay
+    tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
+    for acc_type in range(len(accent)):
+        tps[acc_type] = conf_mat[acc_type, acc_type]
+        fns[acc_type] = np.sum(conf_mat[acc_type, :]) - tps[acc_type]
+        fps[acc_type] = np.sum(conf_mat[:, acc_type]) - tps[acc_type]
+        tns[acc_type] = np.sum(conf_mat) - tps[acc_type] - fps[acc_type] - fns[acc_type]
+    class_wise_precision, class_wise_recall = tps/(tps+fps), tps/(fns+tps)
+    class_wise_f1 = 2 * class_wise_precision * class_wise_recall / (class_wise_precision + class_wise_recall)
+    macro_precision, macro_recall, macro_accuracy = np.mean(class_wise_precision), np.mean(class_wise_recall), np.mean((tps+tns)/(tps+fps+fns+tns))
+    weighted_precision, weighted_recall = ((acc_weights / acc_weights.sum()) * class_wise_precision).sum(), ((acc_weights / acc_weights.sum()) * class_wise_recall).sum()
+    weighted_f1 = 2 * weighted_precision * weighted_recall / (weighted_precision + weighted_recall)
+    micro_precision, micro_recall, micro_accuracy = tps.sum()/(tps.sum()+fps.sum()), tps.sum()/(fns.sum()+tps.sum()), (tps.sum()+tns.sum())/(tps.sum()+tns.sum()+fns.sum()+fps.sum())
+    micro_f1, macro_f1 = 2*micro_precision*micro_recall/(micro_precision+micro_recall), 2*macro_precision*macro_recall/(macro_precision+macro_recall)
 
-        # TODO
-        # if state == 'test':
-        #     return wer, cer, num, length,  weighted_precision, weighted_recal, weighted_f1
-
+    # TODO
+    # if state == 'test':
+    #     return wer, cer, num, length,  weighted_precision, weighted_recal, weighted_f1
+    wer = float(total_wer) / num_tokens
+    cer = float(total_cer) / num_chars
+    
     return wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy
 
 

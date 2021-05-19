@@ -30,6 +30,8 @@ def configE():
         [5,11,1,256,0.2,1,True],
         [5,11,1,384,0.2,1,True],
         [5,11,1,512,0.2,1,True],
+    #    [5,11,1,512,0.2,1,True],
+   #     [5,11,1,640,0.3,1,True],
     ]
 
     return prepare_info(layers)
@@ -59,7 +61,7 @@ def configP(labels=29):
 def configFN():
     layers = [
         # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','nonlinear']
-        [3,11,1,512,0.3,1,True],
+        [1,11,1,512,0.3,1,True],
     ]
 
     return prepare_info(layers)
