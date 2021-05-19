@@ -389,7 +389,7 @@ if __name__ == '__main__':
                     # Logging to tensorboard.
                     writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                     writer.add_scalar('Train/Decodder-Avergae-Loss-Cur-Epoch', d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
-                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
+                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)}/{round(d_avg_loss/p_counter,4)})") 
                 continue
             
             if args.num_epochs > epoch: update_rule = 1
