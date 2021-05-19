@@ -138,7 +138,7 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
                     num = num + 1
                 conf_mat[accents[j], predicted[j].item()] += 1
             length = length + len(accents)
-    # print(time.time() -a3)
+    
     # add comment janvijay
     tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
     for acc_type in range(len(accent)):
@@ -159,7 +159,7 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,l
     #     return wer, cer, num, length,  weighted_precision, weighted_recal, weighted_f1
     wer = float(total_wer) / num_tokens
     cer = float(total_cer) / num_chars
-    print(wer)
+    
     return wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy
 
 
