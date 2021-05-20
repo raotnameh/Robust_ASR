@@ -64,6 +64,7 @@ print("Length of Audios above threshold: ",len(above_aud), " Length of audios be
 with ProcessPoolExecutor(max_workers=num_workers) as executor:
     tqdm((executor.map(copy_file, above_aud)), total=len(above_aud))
 
+print("done saving")
 concat_aud.sort(key=lambda x: x[1],reverse =True)
 make_audio = []
 l = 0
