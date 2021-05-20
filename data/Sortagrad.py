@@ -1,17 +1,28 @@
 import glob
 from tqdm.auto import tqdm
-
+import argparse
 import subprocess
+
+parser = argparse.ArgumentParser(description='Sortagrad')
+parser.add_argument('--input-csv',help = 'path to csv which contains wav files')
+parser.add_argument('--save-path',help = 'path to save the final sorted csv')
+parser.add_argument('--min-time', type=float, help='minimum time threshold for audio')
+parser.add_argument('--max-time', type=float, help='maximum time threshold for audio')
+parser.add_argument('--num-workers', type=int, help='number of workers')
+
+args = parser.parse_args()
+f = args.input_csv
+save_file = args.save_path
+min_duration = args.min_time
+max_duration = args.max_time
+num_workers = args.num_workers
+
 
 def get_length(input_video):
     result = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', input_video.split(',')[0]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     return [input_video,float(result.stdout)]
 
-files = glob.glob("train7_sorted.csv")
-save_file = 'train7_sorted.csv'
-num_workers = 100
-max_duration = 15.0
-min_duration = 0.5
+files = glob.glob(f)
 print(files)
 
 def csv_(dummy):
