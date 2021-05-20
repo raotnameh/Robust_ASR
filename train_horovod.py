@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
     # Lr scaler for multi gpu training
     lr_scaler = hvd.size()
-    args.lr = args.lr * lr_scaler
+    args.lr = args.lr * lr_scaler#**0.5)
     
     # Set seeds for determinism
     torch.manual_seed(args.seed)
@@ -353,7 +353,7 @@ if __name__ == '__main__':
                     
                 [i_[0].train() for i_ in models.values()] # putting all the models in training state
             if args.train_asr: # Only trainig the ASR component
-                # try:    
+             
                 [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
@@ -383,6 +383,7 @@ if __name__ == '__main__':
                     print(error)
                     print("Skipping grad update")
                     p_loss, d_loss = 0.0, 0.0
+            
                 d_avg_loss += d_loss
                 p_avg_loss += p_loss
                 if hvd.rank() == 0:
