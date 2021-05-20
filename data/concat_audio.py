@@ -37,7 +37,7 @@ def audio_creation(f):
     combined_sounds.export(f[2], format=format_)    
 
 
-with ProcessPoolExecutor(max_workers=12) as executor:
+with ProcessPoolExecutor(max_workers=32) as executor:
     lst = list(tqdm((executor.map(add_to_time, files)), total=len(files)))
 
 concat_aud = []
@@ -59,5 +59,5 @@ for i in tqdm(range(0, len(concat_aud)-1,2)):
     make_audio.append((x,y,dst+x[0][:-4]+"-"+y[0]))
 
 print(len(make_audio))
-with ProcessPoolExecutor(max_workers=12) as executor:
+with ProcessPoolExecutor(max_workers=32) as executor:
     tqdm((executor.map(audio_creation, make_audio)), total=len(make_audio))
