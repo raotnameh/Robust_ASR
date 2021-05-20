@@ -234,7 +234,7 @@ if __name__ == '__main__':
         
         if not args.train_asr:
             # Forget Network
-            fnet = Forget(configE()[-1]['out_channels'],configFN())
+            fnet = Forget(configE()[-1]['out_channels'])
             fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
             # Discriminator

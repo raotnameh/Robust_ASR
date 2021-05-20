@@ -238,41 +238,13 @@ class Pre(nn.Module):
             # print(i, "-------",x.shape)
             x, lengths = self.layers[i](x, lengths,)    
         return x, lengths
-
-class Forget(nn.Module):
-    def __init__(self,in_channels,info):
-        super(Forget, self).__init__()
-        
-        self.layers = nn.ModuleList()
-        for i in range(len(info)):
-            self.layers.append(
-                block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
-                    stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget'
-                    )
-            )
-            in_channels = info[i]['out_channels']
-        # self.last = nn.Sequential(
-        #             OrderedDict([
-            
-        #             (f'batchnorm_Forget', nn.BatchNorm1d(info[i]['out_channels'])),
-        #             (f'sigmoid_Forget', nn.ReLU()),
-        #             (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
-        #             ])
-        #             )
-        # self.last = nn.Sequential(
-        #             OrderedDict([
-        #             # (f'batchnorm_Forget', nn.BatchNorm1d(info[i]['out_channels'])),
-        #             (f'softmax_Forget', nn.Softmax(dim=1)),
-        #             # (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
-        #             ])
-        #             )   
-        # self.last = nn.Sequential()
-    def forward(self, x, lengths):
-        for i in range(len(self.layers)):
-            x, lengths = self.layers[i](x, lengths,)
-        # x = self.last(x)
-        return x, lengths 
+class Forget(torch.nn.Module):
+  def __init__(self,in_channels):
+    super(Forget, self).__init__()
+    
+    self.linear = torch.randn((in_channels, 1), requires_grad=True)
+  def forward(self, x):
+    return self.linear*x
 
 
 class Encoder(nn.Module):
