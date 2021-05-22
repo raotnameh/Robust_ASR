@@ -51,7 +51,6 @@ def configD():
 def configP(labels=29):
     layers = [
         # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','nonlinear']
-        [1,5,2,640,0.3,1,True],
         [5,5,1,640,0.3,1,True],
         [5,5,1,768,0.3,1,True],
         [1,29,1,896,0.4,2,True],
