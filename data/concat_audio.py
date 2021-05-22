@@ -21,6 +21,9 @@ thresh = args.thresh
 format_ = args.format
 num_workers = args.num_workers
 
+if not os.path.exists(dst):
+    os.makedirs(dst)
+
 files = os.listdir(src)
 
 def add_to_time(f):
