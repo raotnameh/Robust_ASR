@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
     # Lr scaler for multi gpu training
     lr_scaler = hvd.size()
-    args.lr = args.lr * lr_scaler#**0.5)
+    args.lr = args.lr * lr_scaler**0.5
     
     # Set seeds for determinism
     torch.manual_seed(args.seed)
