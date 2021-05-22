@@ -82,7 +82,7 @@ parser.add_argument('--hyper-rate', type= float, default= 1.1,
 parser.add_argument('--augment', dest='augment', action='store_true', help='Use random tempo and gain perturbations.')
 parser.add_argument('--noise-dir', default=None,
                     help='Directory to inject noise into audio. If default, noise Inject not added')
-parser.add_argument('--noise-prob', default=0.25, help='Probability of noise being added per sample')
+parser.add_argument('--noise-prob', default=0.25, type=float, help='Probability of noise being added per sample')
 parser.add_argument('--noise-min', default=0.1,
                     help='Minimum noise level to sample from. (1.0 means all noise, not original signal)', type=float)
 parser.add_argument('--noise-max', default=0.25,
@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
     # Lr scaler for multi gpu training
     lr_scaler = hvd.size()
-    args.lr = args.lr * lr_scaler#**0.5)
+    args.lr = args.lr * lr_scaler**0.5
     
     # Set seeds for determinism
     torch.manual_seed(args.seed)
