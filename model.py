@@ -244,11 +244,12 @@ class Forget(torch.nn.Module):
   def __init__(self,in_channels):
     super(Forget, self).__init__()
     
-    self.linear = torch.nn.Parameter(torch.randint(0,2,(in_channels, 1),dtype=torch.float))
+    self.linear = torch.nn.Parameter(torch.randint(0,2,(in_channels,1), dtype=torch.float32))
     
   def forward(self, x):
-    print(self.linear.mean())
-    return self.linear*x
+    # print(self.linear.mean().item())
+    # print("------")
+    return F.relu6(self.linear)/6 * x
 
 class Encoder(nn.Module):
     def __init__(self,in_channels,info):

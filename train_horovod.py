@@ -477,7 +477,7 @@ if __name__ == '__main__':
                 decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
             
             loss = asr_loss + mask_regulariser_loss + decoder_loss 
-
+            # print(F.relu6(m[:5])/6)
             scaler.scale(discriminator_loss).backward(retain_graph=True)
             for i_ in models.keys():
                 models[i_][-1].synchronize()
@@ -489,9 +489,10 @@ if __name__ == '__main__':
                 scaler.scale(loss).backward()
                 for i_ in models.keys():
                     models[i_][-1].synchronize()
-                    if i_ != 'discriminator':
-                        with models[i_][-1].skip_synchronize():
-                            scaler.step(models[i_][-1])
+                    if i_ == 'discriminator': continue
+                    # if i_== 'forget_net': continue
+                    with models[i_][-1].skip_synchronize():
+                        scaler.step(models[i_][-1])
                 scaler.update()
                 p_avg_loss += asr_loss.item()
                 p_d_avg_loss += p_d_loss
