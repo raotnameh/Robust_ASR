@@ -243,10 +243,11 @@ class Pre(nn.Module):
 class Forget(torch.nn.Module):
   def __init__(self,in_channels):
     super(Forget, self).__init__()
-    self.linear = torch.randn((in_channels, 1), requires_grad=True)
+    
+    self.linear = torch.nn.Parameter(torch.randint(0,2,(in_channels, 1),dtype=torch.float))
     
   def forward(self, x):
-    print(self.linear)
+    # print(self.linear)
     return self.linear*x
 
 class Encoder(nn.Module):

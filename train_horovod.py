@@ -235,7 +235,7 @@ if __name__ == '__main__':
         if not args.train_asr:
             # Forget Network
             fnet = Forget(configE()[-1]['out_channels'])
-            fnet_optimizer = torch.optim.Adam([fnet.linear], lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
             # Discriminator
             discriminator = Discriminator(configFN()[-1]['out_channels'],configDM(),classes=len(accent))
@@ -291,6 +291,7 @@ if __name__ == '__main__':
     # exit()
     # HVD multi gpu training
     for i in models.keys():
+    
         models[i][0].to(device)
         hvd.broadcast_parameters(models[i][0].state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(models[i][-1], root_rank=0)
@@ -414,9 +415,7 @@ if __name__ == '__main__':
                     x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
                     z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
                     m = models['forget_net'][0](z) # Forget network
-                    print(z)
-                    print(m)
-                    exit()
+                    
                     z_ = z * m # Forget Operation
                     discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
                     # Loss             

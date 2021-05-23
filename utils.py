@@ -76,7 +76,7 @@ def weights_(args, accent_dict):
     # # [len(accent_dict)]
     disc_loss_weights = torch.zeros(len(accent_dict))
     for count, i in enumerate(accent_dict):
-        if accent_dict[i] == count: disc_loss_weights[count] =  accent_counts[int(i)]
+        if accent_dict[i] == count: disc_loss_weights[count] =  accent_counts[i]
         else: print(f"error in weighted loss")
     return torch.sum(disc_loss_weights) / disc_loss_weights
 
