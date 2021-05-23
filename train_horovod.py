@@ -414,9 +414,9 @@ if __name__ == '__main__':
                     # Forward pass
                     x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
                     z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
-                    m = models['forget_net'][0](z) # Forget network
-                    
-                    z_ = z * m # Forget Operation
+                    z_ = models['forget_net'][0](z) # Forget Operation
+                    # m = models['forget_net'][0].linear #forget mask
+                    # print(z_.shape, z.shape)
                     discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
                     # Loss             
                     discriminator_loss = models['discriminator'][1](discriminator_out, accents_)
@@ -463,8 +463,8 @@ if __name__ == '__main__':
                 x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                 z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
                 decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
-                m = models['forget_net'][0](z) # Forget network
-                z_ = z * m # Forget Operation
+                z_ = models['forget_net'][0](z) # Forget Operation
+                m = models['forget_net'][0].linear #forget mask
                 discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
                 # Loss                
