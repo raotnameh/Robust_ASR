@@ -238,14 +238,16 @@ class Pre(nn.Module):
             # print(i, "-------",x.shape)
             x, lengths = self.layers[i](x, lengths,)    
         return x, lengths
+
+
 class Forget(torch.nn.Module):
   def __init__(self,in_channels):
     super(Forget, self).__init__()
-    
     self.linear = torch.randn((in_channels, 1), requires_grad=True)
+    
   def forward(self, x):
+    print(self.linear)
     return self.linear*x
-
 
 class Encoder(nn.Module):
     def __init__(self,in_channels,info):
