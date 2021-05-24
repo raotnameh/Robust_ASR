@@ -62,6 +62,7 @@ def configFN():
     layers = [
         # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','nonlinear']
         [1,11,1,512,0.3,1,True],
+        # [1,1,1,512,0.3,1,False],
     ]
 
     return prepare_info(layers)

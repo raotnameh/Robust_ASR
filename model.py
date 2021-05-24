@@ -6,7 +6,7 @@ from collections import OrderedDict
 import numpy as np
 
 class block_B(nn.Module):
-    def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2,batch_norm=True,name='pre'):
+    def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2,batch_norm=True,name='pre',groups=1):
         super(block_B, self).__init__()
 
         self.kernel_size = kernel_size
@@ -19,7 +19,7 @@ class block_B(nn.Module):
             self.layers.append(
                 nn.Sequential(
                     OrderedDict([
-                    (f'conv_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
+                    (f'conv_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=groups)),
                     ])
                 ) 
             )
@@ -248,8 +248,8 @@ class Forget(nn.Module):
             self.layers.append(
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget'
-                    )
+                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
+                    groups=in_channels)
             )
             in_channels = info[i]['out_channels']
         # self.last = nn.Sequential(
