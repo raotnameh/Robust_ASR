@@ -35,7 +35,6 @@ try:os.system(f"rm -rf {args.dst_dir}")
 except: pass
 os.makedirs(args.dst_dir, exist_ok=True)
 
-<<<<<<< HEAD
 tempo_value_ = [0.9,1,1.1]
 low_gain, high_gain = (-6,8)
 
@@ -56,25 +55,3 @@ for tempo_value in tempo_value_:
 
     with open(os.path.join(args.upd_csv,f"{args.csv.split('/')[-1]}_{tempo_value}.csv"), "w") as f:
         f.write(updated_csv)
-=======
-tempo_value = 0.5
-low_gain, high_gain = (-6,8)
-
-
-inp = []
-updated_csv = ''
-for i in csv:
-    paths = i.split(',') 
-    wav = paths[0]
-    gain_value = np.random.uniform(low=low_gain, high=high_gain)
-    inp.append((wav,16000,tempo_value,gain_value,args.dst_dir))
-    paths[0] = os.path.join(args.dst_dir, f"{tempo_value}_{wav.split('/')[-1]}")
-    updated_csv += ",".join(paths)
-
-with ProcessPoolExecutor(max_workers=args.num_workers) as executor:
-    tqdm((executor.map(augment_audio_with_sox, inp)), total=len(inp))
-
-
-with open(os.path.join(args.upd_csv,f"{args.csv.split('/')[-1]}_{tempo_value}.csv"), "w") as f:
-    f.write(updated_csv)
->>>>>>> 4fb507f62493c18c56903284e6b7693e460c0722

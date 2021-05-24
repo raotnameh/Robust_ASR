@@ -285,7 +285,7 @@ if __name__ == '__main__':
         disc_ = iter(disc_train_loader)
 
     
-    if args.no_sorta_grad or args.continue_from:
+    if args.no_sorta_grad or args.finetune:
         print("Shuffling batches for the following epochs")
         train_sampler.shuffle(start_epoch)
     # exit()
@@ -326,7 +326,7 @@ if __name__ == '__main__':
                         save[s_].append(models[s_][0]) 
                         save[s_].append(models[s_][1]) 
                         save[s_].append(models[s_][2].state_dict()) 
-                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
+                    package = {'models': save , 'start_epoch': epoch, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                     torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
                     del save
             
