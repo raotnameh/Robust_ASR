@@ -33,7 +33,7 @@ parser.add_argument('--window-size', default=.02, type=float, help='Window size 
 parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
 parser.add_argument('--window', default='hamming', help='Window type for spectrogram generation')
 parser.add_argument('--epochs', default=100, type=int, help='Number of training epochs')
-parser.add_argument('--patience', dest='patience', default=25, type=int, 
+parser.add_argument('--patience', dest='patience', default=10, type=int, 
                     help='Break the training loop if the WER does not decrease for a certain number of epochs')
 parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
@@ -82,7 +82,7 @@ parser.add_argument('--hyper-rate', type= float, default= 1.1,
 parser.add_argument('--augment', dest='augment', action='store_true', help='Use random tempo and gain perturbations.')
 parser.add_argument('--noise-dir', default=None,
                     help='Directory to inject noise into audio. If default, noise Inject not added')
-parser.add_argument('--noise-prob', default=0.25, help='Probability of noise being added per sample')
+parser.add_argument('--noise-prob', default=0.25,type=float, help='Probability of noise being added per sample')
 parser.add_argument('--noise-min', default=0.1,
                     help='Minimum noise level to sample from. (1.0 means all noise, not original signal)', type=float)
 parser.add_argument('--noise-max', default=0.25,
@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
     # Lr scaler for multi gpu training
     lr_scaler = hvd.size()
-    args.lr = args.lr * lr_scaler
+    args.lr = args.lr * lr_scaler#**0.5
     
     # Set seeds for determinism
     torch.manual_seed(args.seed)
@@ -285,7 +285,7 @@ if __name__ == '__main__':
         disc_ = iter(disc_train_loader)
 
     
-    if args.no_sorta_grad or args.continue_from:
+    if args.no_sorta_grad or args.finetune:
         print("Shuffling batches for the following epochs")
         train_sampler.shuffle(start_epoch)
     # exit()
@@ -325,7 +325,7 @@ if __name__ == '__main__':
                         save[s_].append(models[s_][0]) 
                         save[s_].append(models[s_][1]) 
                         save[s_].append(models[s_][2].state_dict()) 
-                    package = {'models': save , 'start_epoch': epoch + 1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
+                    package = {'models': save , 'start_epoch': epoch , 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                     torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
                     del save
             
@@ -353,7 +353,7 @@ if __name__ == '__main__':
                     
                 [i_[0].train() for i_ in models.values()] # putting all the models in training state
             if args.train_asr: # Only trainig the ASR component
-                # try:    
+             
                 [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
                 p_counter += 1
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
@@ -383,13 +383,14 @@ if __name__ == '__main__':
                     print(error)
                     print("Skipping grad update")
                     p_loss, d_loss = 0.0, 0.0
+            
                 d_avg_loss += d_loss
                 p_avg_loss += p_loss
                 if hvd.rank() == 0:
                     # Logging to tensorboard.
                     writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                     writer.add_scalar('Train/Decodder-Avergae-Loss-Cur-Epoch', d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
-                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)})") 
+                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)}/{round(d_avg_loss/p_counter,4)})") 
                 continue
             
             if args.num_epochs > epoch: update_rule = 1

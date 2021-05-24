@@ -119,7 +119,7 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
                         num = num + 1
                     conf_mat[accents[j], predicted[j].item()] += 1
                 length = length + len(accents)
-                
+
         wer = float(total_wer) / num_tokens
         cer = float(total_cer) / num_chars
 
