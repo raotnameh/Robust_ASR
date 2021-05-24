@@ -285,7 +285,7 @@ if __name__ == '__main__':
         disc_ = iter(disc_train_loader)
 
     
-    if args.no_sorta_grad or args.finetune:
+    if args.no_sorta_grad:
         print("Shuffling batches for the following epochs")
         train_sampler.shuffle(start_epoch)
     # exit()
