@@ -50,16 +50,16 @@ parser.add_argument('--no-sortaGrad', dest='no_sorta_grad', action='store_true',
 parser.add_argument('--gpu-rank', default=None,
                     help='If using distributed parallel for multi-gpu, sets the GPU for the process')
 parser.add_argument('--seed', default=123456, type=int, help='Seed to generators')
-parser.add_argument('--dummy', action='store_true',
-                    help='do a dummy loop') 
+
+
 parser.add_argument('--num-epochs', default=1, type=int,
                     help='choosing the number of iterations to train the discriminator in each training iteration')   
 parser.add_argument('--exp-name', dest='exp_name', required=True, help='Location to save experiment\'s chekpoints and log-files.')
-parser.add_argument('--disc-kl-loss', action='store_true',
-                    help='use kl divergence loss for discriminator')
 parser.add_argument('--early-val', default=10e-10, type=int,
                     help='Doing an early validation step')                    
 parser.add_argument('--warmup', default=None, help='start-from from checkpoint model')
+parser.add_argument('--dummy', action='store_true',
+                    help='do a dummy loop') 
 
 # Model arguements
 parser.add_argument('--update-rule', default=2, type=int,
