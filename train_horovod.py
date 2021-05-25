@@ -306,7 +306,7 @@ if __name__ == '__main__':
         if beta <= 1.0: beta = beta * args.hyper_rate
         if gamma <= 1.0: gamma = gamma * args.hyper_rate
         
-        print(alpha,beta,gamma)
+        if hvd.rank() == 0 : print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
                 break
@@ -554,7 +554,7 @@ if __name__ == '__main__':
                 package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
                 del save
-                
+               
             if args.checkpoint:
                 save = {}
                 for s_ in models.keys():
