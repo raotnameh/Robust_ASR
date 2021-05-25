@@ -11,7 +11,7 @@ import numpy as np
 from collections import OrderedDict
 import pandas as pd
 import horovod.torch as hvd
-from config import *
+from config.config import *
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from data.data_loader import get_accents
