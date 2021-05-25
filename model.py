@@ -249,7 +249,7 @@ class Forget(nn.Module):
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
-                    groups=in_channels)
+                    )#groups=in_channels)
             )
             in_channels = info[i]['out_channels']
         # self.last = nn.Sequential(
