@@ -38,9 +38,9 @@ os.makedirs(args.dst_dir, exist_ok=True)
 tempo_value_ = [0.9,1,1.1]
 low_gain, high_gain = (-6,8)
 
+updated_csv = ''
 for tempo_value in tempo_value_:
     inp = []
-    updated_csv = ''
     for i in csv:
         paths = i.split(',') 
         wav = paths[0]
@@ -53,5 +53,5 @@ for tempo_value in tempo_value_:
         tqdm((executor.map(augment_audio_with_sox, inp)), total=len(inp))
 
 
-    with open(os.path.join(args.upd_csv,f"{args.csv.split('/')[-1].split('.')[0]}_{tempo_value}.csv"), "w") as f:
-        f.write(updated_csv)
+with open(os.path.join(args.upd_csv,f"{args.csv.split('/')[-1].split('.')[0]}_augment.csv"), "w") as f:
+    f.write(updated_csv)
