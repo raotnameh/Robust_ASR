@@ -245,34 +245,20 @@ class Forget(nn.Module):
         
         self.layers = nn.ModuleList()
         for i in range(len(info)):
+            # if kernel_size=info[i]['kernel_size']
             self.layers.append(
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
-                    )#groups=in_channels)
+                    groups=in_channels)
             )
             in_channels = info[i]['out_channels']
-        # self.last = nn.Sequential(
-        #             OrderedDict([
-            
-        #             (f'batchnorm_Forget', nn.BatchNorm1d(info[i]['out_channels'])),
-        #             (f'sigmoid_Forget', nn.ReLU()),
-        #             (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
-        #             ])
-        #             )
-        # self.last = nn.Sequential(
-        #             OrderedDict([
-        #             # (f'batchnorm_Forget', nn.BatchNorm1d(info[i]['out_channels'])),
-        #             (f'softmax_Forget', nn.Softmax(dim=1)),
-        #             # (f'dropout_Forget', nn.Dropout(p=info[i]['dropout'])),
-        #             ])
-        #             )   
-        # self.last = nn.Sequential()
+
     def forward(self, x, lengths):
         for i in range(len(self.layers)):
             x, lengths = self.layers[i](x, lengths,)
         # x = self.last(x)
-        return x, lengths 
+        return F.relu6(x)/6, lengths 
 
 
 class Encoder(nn.Module):

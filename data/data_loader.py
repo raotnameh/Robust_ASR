@@ -95,7 +95,7 @@ class NoiseInjection(object):
 
 
 class SpectrogramParser(AudioParser):
-    def __init__(self, audio_conf, normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
+    def __init__(self, audio_conf, use_noise=True, normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
         """
         Parses audio file into spectrogram with optional normalization and various augmentations
         :param audio_conf: Dictionary containing the sample rate, window and the window length/stride in seconds
@@ -113,9 +113,13 @@ class SpectrogramParser(AudioParser):
         self.normalize = normalize
         self.speed_volume_perturb = speed_volume_perturb
         self.spec_augment = spec_augment
-        self.noiseInjector = NoiseInjection(audio_conf['noise_dir'], self.sample_rate,
+    
+        if use_noise:
+            print("using-noise")
+            self.noiseInjector = NoiseInjection(audio_conf['noise_dir'], self.sample_rate,
                                             audio_conf['noise_levels']) if audio_conf.get(
-            'noise_dir') is not None else None
+                'noise_dir') is not None else None
+        else: self.noiseInjector = None
         self.noise_prob = audio_conf.get('noise_prob')
         self.audio_recreation = audio_recreation
         self.metadata_reacreation_path = metadata_reacreation_path
@@ -163,7 +167,7 @@ class SpectrogramParser(AudioParser):
 
 
 class SpectrogramDataset(Dataset, SpectrogramParser):
-    def __init__(self, audio_conf, manifest_filepath, labels,accent=None,normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
+    def __init__(self, audio_conf, manifest_filepath, labels, use_noise=True, accent=None,normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
         """
         Dataset that loads tensors via a csv containing file paths to audio files and transcripts separated by
         a comma. Each new line is a different sample. Example below:
@@ -190,7 +194,7 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
             self.accent =accent
         self.size = len(ids)
         self.labels_map = dict([(labels[i], i) for i in range(len(labels))])
-        super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment,audio_recreation,metadata_reacreation_path)
+        super(SpectrogramDataset, self).__init__(audio_conf, use_noise, normalize, speed_volume_perturb, spec_augment,audio_recreation,metadata_reacreation_path)
 
     def __getitem__(self, index):
         sample = self.ids[index]

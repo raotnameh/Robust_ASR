@@ -185,6 +185,7 @@ if __name__ == '__main__':
         decoder = GreedyDecoder(labels, blank_index=labels.index('_'))
     
     test_dataset = SpectrogramDataset(audio_conf=audio_conf,
+                                      use_noise=False,
                                       manifest_filepath=args.test_manifest,
                                       labels=labels,
                                       normalize=True,
