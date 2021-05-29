@@ -11,7 +11,7 @@ import numpy as np
 from collections import OrderedDict
 import pandas as pd
 import horovod.torch as hvd
-from config import *
+from config.config import *
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from data.data_loader import get_accents
@@ -263,7 +263,7 @@ if __name__ == '__main__':
         disc_train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
                                        normalize=True, speed_volume_perturb=args.augment,
                                        spec_augment=args.spec_augment)
-    test_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.val_manifest, labels=labels,
+    test_dataset = SpectrogramDataset(audio_conf=audio_conf, use_noise=False, manifest_filepath=args.val_manifest, labels=labels,
                                       normalize=True, speed_volume_perturb=False, spec_augment=False)
 
     train_sampler = DistributedBucketingSampler(train_dataset, batch_size=args.batch_size,
@@ -280,12 +280,12 @@ if __name__ == '__main__':
 
     if not args.train_asr: 
         disc_train_loader = AudioDataLoader(disc_train_dataset,
-                                   num_workers=args.update_rule, batch_sampler=disc_train_sampler,pin_memory=True)    
+                                   num_workers=args.num_workers, batch_sampler=disc_train_sampler,pin_memory=True)    
         disc_train_sampler.shuffle(start_epoch)
         disc_ = iter(disc_train_loader)
 
     
-    if args.no_sorta_grad or args.finetune:
+    if args.no_sorta_grad:
         print("Shuffling batches for the following epochs")
         train_sampler.shuffle(start_epoch)
     # exit()
@@ -306,7 +306,7 @@ if __name__ == '__main__':
         if beta <= 1.0: beta = beta * args.hyper_rate
         if gamma <= 1.0: gamma = gamma * args.hyper_rate
         
-        print(alpha,beta,gamma)
+        if hvd.rank() == 0 : print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
                 break
@@ -466,6 +466,14 @@ if __name__ == '__main__':
                 discriminator_out = models['discriminator'][0](z_, updated_lengths_) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
                 # Loss                
+                # print(models['forget_net'][0])
+                # print(models['forget_net'][0].layers[0].layers[0].conv_Forget)
+                # linear_params = torch.cat([x.view(-1) for x in models['forget_net'][0].layers[0].layers[0].conv_Forget.parameters()])
+                # L1_loss = torch.norm(m, 1)
+                # print(i,L1_loss)
+                # print(m.shape)
+                # exit()
+                # if i%5 == 4: print(m[0])
                 discriminator_loss = models['discriminator'][1](discriminator_out, accents) * beta
                 p_d_loss = discriminator_loss.item()    
         
@@ -554,7 +562,7 @@ if __name__ == '__main__':
                 package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
                 del save
-                
+               
             if args.checkpoint:
                 save = {}
                 for s_ in models.keys():
@@ -586,7 +594,7 @@ if __name__ == '__main__':
             for i in models:
                 for g in models[i][-1].param_groups:
                     if dummy_lr is None: dummy_lr = g['lr']
-                    if g['lr'] >= 1e-6:
+                    if g['lr'] >= 1e-4:
                         g['lr'] = g['lr'] * args.learning_anneal
                 print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
             dummy_lr = None
@@ -605,3 +613,5 @@ if __name__ == '__main__':
 #                                 'Average WER {wer:.3f}\t'
 #                                 'Average CER {cer:.3f}\t'.format(epoch + 1, wer=wer, cer=cer))
 #                 [h_[0].train() for h_ in models.values()] # putting all the models in training state
+
+

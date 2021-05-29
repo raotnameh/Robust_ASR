@@ -70,6 +70,7 @@ class Decoder_loss():
 
 def weights_(args, accent_dict):
     accent_counts = pd.read_csv(args.train_manifest, header=None).iloc[:,[-1]].apply(pd.value_counts).to_dict()[2]#
+    accent_counts = {str(i):j for i,j in accent_counts.items()}
     # print(sorted(accent_counts))
     # print(sorted(accent_dict))
     # exit()

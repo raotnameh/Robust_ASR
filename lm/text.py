@@ -28,7 +28,7 @@ def txt_save(dummy):
     return a
 
 def run(get_txt, txt):
-    with ProcessPoolExecutor(max_workers=64) as executor:
+    with ProcessPoolExecutor(max_workers=48) as executor:
         results = list(tqdm((executor.map(get_txt, txt)), total=len(txt)))
     return results
 

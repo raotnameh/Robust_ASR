@@ -29,6 +29,7 @@ def configE():
         # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','batchnorm']
         [5,11,1,256,0.2,1,True],
         [5,11,1,384,0.2,1,True],
+        # [1,11,2,512,0.2,1,True],
         [5,11,1,512,0.2,1,True],
     #    [5,11,1,512,0.2,1,True],
    #     [5,11,1,640,0.3,1,True],
@@ -39,6 +40,7 @@ def configE():
 def configD():
     layers = [
         # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','nonlinear']
+        # [1,11,2,512,0.2,1,True],
         [5,11,1,384,0.2,1,True],
         [5,11,1,256,0.2,1,True],
         [1,11,2,161,0.0,1,False],
@@ -61,7 +63,8 @@ def configP(labels=29):
 def configFN():
     layers = [
         # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','nonlinear']
-        [1,11,1,512,0.3,1,True],
+        # [1,11,1,512,0.3,1,True],
+        [1,1,1,512,0.0,1,False],
     ]
 
     return prepare_info(layers)
