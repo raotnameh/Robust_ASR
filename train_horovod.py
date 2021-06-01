@@ -305,7 +305,7 @@ if __name__ == '__main__':
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
         if beta <= 1.0: beta = beta * args.hyper_rate
         if gamma <= 1.0: gamma = gamma * args.hyper_rate
-        
+         
         if hvd.rank() == 0 : print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
