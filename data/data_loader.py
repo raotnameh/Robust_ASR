@@ -340,8 +340,8 @@ def augment_audio_with_sox(path, sample_rate, tempo, gain):
         y = load_audio(augmented_filename)
         return y
 
-def load_randomly_augmented_audio(path, sample_rate=16000, tempo_range=(0.8, 1.2),
-                                  gain_range=(-6, 8)):
+def load_randomly_augmented_audio(path, sample_rate=16000, tempo_range=(0.9, 1.1),
+                                  gain_range=(-4, 4)):
     """
     Picks tempo and gain uniformly, applies it to the utterance by using sox utility.
     Returns the augmented utterance.
