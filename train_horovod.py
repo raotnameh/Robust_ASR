@@ -12,7 +12,7 @@ from collections import OrderedDict
 import pandas as pd
 import horovod.torch as hvd
 from config.config_small import *
-# from config.config_large import *
+#from config.config_large import *
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from data.data_loader import get_accents
@@ -304,8 +304,8 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 0.1: beta = beta * args.hyper_rate
-        if gamma <= 0.1: gamma = gamma * args.hyper_rate
+        if beta <= 1.0: beta = beta * args.hyper_rate
+        if gamma <= 1.0: gamma = gamma * args.hyper_rate
         
         if hvd.rank() == 0 : print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):

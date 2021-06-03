@@ -253,7 +253,8 @@ class Forget(nn.Module):
                     groups=in_channels)
             )
             in_channels = info[i]['out_channels']
-
+        # self.last = nn.BatchNorm1d(in_channels)
+        
     def forward(self, x, lengths):
         for i in range(len(self.layers)):
             x, lengths = self.layers[i](x, lengths,)
