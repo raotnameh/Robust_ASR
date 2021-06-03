@@ -3,7 +3,7 @@ save*/
 enus_40*/
 visual*/
 lm*/
-csvs*/
+#csvs*/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
