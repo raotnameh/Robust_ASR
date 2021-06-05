@@ -8,7 +8,6 @@ from concurrent.futures import ProcessPoolExecutor
 parser = argparse.ArgumentParser(description='Concatenate audio files')
 parser.add_argument('--csv',help = 'path to source directory which contains wav files')
 parser.add_argument('--dst-dir',help = 'full path to destination directory which will contain final wav files')
-parser.add_argument('--upd-csv', help='time threshold above which each audio should be')
 parser.add_argument('--num-workers', type=int, help='number of workers')
 
 args = parser.parse_args()
