@@ -524,6 +524,16 @@ if __name__ == '__main__':
             print('Training Summary Epoch: [{0}]\t'
               'Time taken (s): {1}\t'
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
+        
+        # anneal lr
+        dummy_lr = None
+        for i in models:
+            for g in models[i][-1].param_groups:
+                if dummy_lr is None: dummy_lr = g['lr']
+                if g['lr'] >= 1e-8:
+                    g['lr'] = g['lr'] * args.learning_anneal
+            print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
+        dummy_lr = None
 
         if hvd.rank() == 0:
             with torch.no_grad():
@@ -591,15 +601,6 @@ if __name__ == '__main__':
 
             d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
 
-        # anneal lr
-        dummy_lr = None
-        for i in models:
-            for g in models[i][-1].param_groups:
-                if dummy_lr is None: dummy_lr = g['lr']
-                if g['lr'] >= 1e-8:
-                    g['lr'] = g['lr'] * args.learning_anneal
-            print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
-        dummy_lr = None
 
         if not args.no_shuffle:
             print("Shuffling batches...")
