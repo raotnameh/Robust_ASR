@@ -52,5 +52,5 @@ for tempo_value in tempo_value_:
         tqdm((executor.map(augment_audio_with_sox, inp)), total=len(inp))
 
 
-with open(os.path.join(args.upd_csv,f"{args.csv.split('/')[-1].split('.')[0]}_augmented.csv"), "w") as f:
+with open(f"{args.csv.split('.')[0]}_augmented.csv", "w") as f:
     f.write(updated_csv)
