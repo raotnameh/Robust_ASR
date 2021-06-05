@@ -297,6 +297,17 @@ if __name__ == '__main__':
         hvd.broadcast_optimizer_state(models[i][-1], root_rank=0)
         models[i][-1] = hvd.DistributedOptimizer(models[i][-1], named_parameters=models[i][0].named_parameters())
     
+    # anneal lr
+    dummy_lr = None
+    for i in models:
+        for g in models[i][-1].param_groups:
+            if dummy_lr is None: dummy_lr = g['lr']
+            if g['lr'] >= 1e-8:
+                g['lr'] = g['lr'] * args.learning_anneal
+        print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
+    dummy_lr = None
+
+
     alpha, beta, gamma = args.alpha, args.beta, args.gamma
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
     for epoch in range(start_epoch, args.epochs):
