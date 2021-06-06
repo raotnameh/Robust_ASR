@@ -519,7 +519,7 @@ if __name__ == '__main__':
                 if dummy_lr is None: dummy_lr = g['lr']
                 if g['lr'] >= 1e-8:
                     g['lr'] = g['lr'] * args.learning_anneal
-            print(f"Learning rate annealed to: {g['lr']} from {dummy_lr}")
+            print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
         dummy_lr = None
 
         if hvd.rank() == 0:
