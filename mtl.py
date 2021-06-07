@@ -305,8 +305,8 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 0.1: beta = beta * args.hyper_rate
-        if gamma <= 0.1: gamma = gamma * args.hyper_rate
+        if beta <= 1.0: beta = beta * args.hyper_rate
+        if gamma <= 1.0: gamma = gamma * args.hyper_rate
         
         if hvd.rank() == 0 : print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
@@ -395,8 +395,8 @@ if __name__ == '__main__':
                     if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)}/{round(d_avg_loss/p_counter,4)})") 
                 continue
             
-            if args.num_epochs > epoch: update_rule = args.update_rule
-            else: update_rule = 1
+            if args.num_epochs > epoch: update_rule = 1
+            else: update_rule = args.update_rule
             for k in range(int(update_rule)): #updating the discriminator only  
                 
                 d_counter += 1
@@ -413,9 +413,8 @@ if __name__ == '__main__':
                 accents_ = torch.tensor(accents_).to(device)
                 with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                     # Forward pass
-                    with torch.no_grad():
-                        x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
-                        z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
+                    x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
+                    z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
                     m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
                     z_ = z * m # Forget Operation
                     discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
@@ -458,36 +457,51 @@ if __name__ == '__main__':
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
             p_counter += 1
             
+
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
-                with torch.no_grad():
-                    x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
-                    z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
+                x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
+                z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
+                decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                 m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = models['discriminator'][0](z_, updated_lengths_) # Discriminator network
-                # asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
+                asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
                 # Loss                
+                # print(models['forget_net'][0])
+                # print(models['forget_net'][0].layers[0].layers[0].conv_Forget)
+                # linear_params = torch.cat([x.view(-1) for x in models['forget_net'][0].layers[0].layers[0].conv_Forget.parameters()])
+                # L1_loss = torch.norm(m, 1)
+                # print(i,L1_loss)
+                # print(m.shape)
+                # exit()
+                # if i%5 == 4: print(m[0])
                 discriminator_loss = models['discriminator'][1](discriminator_out, accents) * beta
                 p_d_loss = discriminator_loss.item()    
         
                 mask_regulariser_loss = (m * (1-m)).mean() * gamma
-                # asr_out = asr_out.transpose(0, 1)  # TxNxH
-                # asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                
-            loss =  mask_regulariser_loss + discriminator_loss 
+                asr_out = asr_out.transpose(0, 1)  # TxNxH
+                asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
+                decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
+            
+            loss = asr_loss + mask_regulariser_loss + decoder_loss 
+
+            scaler.scale(discriminator_loss).backward(retain_graph=True)
+            for i_ in models.keys():
+                models[i_][-1].synchronize()
+            models['encoder'][-1].zero_grad()
 
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
             if valid_loss:
                 scaler.scale(loss).backward()
-                for i_ in ['discriminator', 'forget_net']:
+                for i_ in models.keys():
                     models[i_][-1].synchronize()
-                    with models[i_][-1].skip_synchronize():
-                        scaler.step(models[i_][-1])
+                    if i_ != 'discriminator':
+                        with models[i_][-1].skip_synchronize():
+                            scaler.step(models[i_][-1])
                 scaler.update()
-                p_loss = 0
-                p_avg_loss += 0
+                p_avg_loss += asr_loss.item()
                 p_d_avg_loss += p_d_loss
             else: 
                 print(error)

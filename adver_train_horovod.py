@@ -305,8 +305,8 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 1.0: beta = beta * args.hyper_rate
-        if gamma <= 1.0: gamma = gamma * args.hyper_rate
+        if beta <= 0.1: beta = beta * args.hyper_rate
+        if gamma <= 0.1: gamma = gamma * args.hyper_rate
         
         if hvd.rank() == 0 : print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
@@ -395,8 +395,8 @@ if __name__ == '__main__':
                     if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)}/{round(d_avg_loss/p_counter,4)})") 
                 continue
             
-            if args.num_epochs > epoch: update_rule = args.update_rule
-            else: update_rule = 1
+            if args.num_epochs < epoch: update_rule = len(disc_train_sampler)
+            else: update_rule = args.update_rule
             for k in range(int(update_rule)): #updating the discriminator only  
                 
                 d_counter += 1
