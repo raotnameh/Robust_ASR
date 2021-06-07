@@ -236,11 +236,11 @@ if __name__ == '__main__':
         if not args.train_asr:
             # Forget Network
             fnet = Forget(configE()[-1]['out_channels'],configFN())
-            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=10*args.lr,weight_decay=1e-4,amsgrad=True)
+            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
             # Discriminator
             discriminator = Discriminator(configFN()[-1]['out_channels'],configDM(),classes=len(accent))
-            discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=10*args.lr,weight_decay=1e-4,amsgrad=True)
+            discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             # Weighted loss depending on the class count 
             disc_loss_weights = weights_(args, accent_dict).to(device)   
             dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights)
@@ -458,7 +458,6 @@ if __name__ == '__main__':
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
             p_counter += 1
             
-
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
                 with torch.no_grad():
@@ -467,28 +466,28 @@ if __name__ == '__main__':
                 m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = models['discriminator'][0](z_, updated_lengths_) # Discriminator network
-                asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
+                # asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
                 # Loss                
                 discriminator_loss = models['discriminator'][1](discriminator_out, accents) * beta
                 p_d_loss = discriminator_loss.item()    
         
                 mask_regulariser_loss = (m * (1-m)).mean() * gamma
-                asr_out = asr_out.transpose(0, 1)  # TxNxH
-                asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
+                # asr_out = asr_out.transpose(0, 1)  # TxNxH
+                # asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
                 
-            loss = asr_loss + mask_regulariser_loss + discriminator_loss 
+            loss =  mask_regulariser_loss + discriminator_loss 
 
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
             if valid_loss:
                 scaler.scale(loss).backward()
-                for i_ in ['discriminator', 'predictor', 'forget_net']:
+                for i_ in ['discriminator', 'forget_net']:
                     models[i_][-1].synchronize()
                     with models[i_][-1].skip_synchronize():
                         scaler.step(models[i_][-1])
                 scaler.update()
-                p_loss = asr_loss.item()
-                p_avg_loss += asr_loss.item()
+                p_loss = 0
+                p_avg_loss += 0
                 p_d_avg_loss += p_d_loss
             else: 
                 print(error)
