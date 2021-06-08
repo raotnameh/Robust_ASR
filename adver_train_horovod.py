@@ -395,8 +395,8 @@ if __name__ == '__main__':
                     if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)}/{round(d_avg_loss/p_counter,4)})") 
                 continue
             
-            if args.num_epochs < epoch: update_rule = len(disc_train_sampler)
-            else: update_rule = args.update_rule
+            if args.num_epochs > epoch: update_rule = args.update_rule
+            else: update_rule = 1
             for k in range(int(update_rule)): #updating the discriminator only  
                 
                 d_counter += 1
