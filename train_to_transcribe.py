@@ -5,6 +5,7 @@ import os
 parser = argparse.ArgumentParser(description='test to transcribe convert the model')
 parser.add_argument('--path', type=str, help='enter the full path to the model checkpoints')
 parser.add_argument('--save', type=str, help='enter the path and file name to same, example: save/ckpt_final.pth')
+parser.add_argument('--half', default='store_true', help='save the weights in 16 bytes')
 
 args = parser.parse_args()
 
