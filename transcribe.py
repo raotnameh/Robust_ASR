@@ -28,6 +28,7 @@ parser.add_argument('--batch-size', default=32, type=int, help='Batch size for t
 parser.add_argument('--num-workers', default=64, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--gpu-rank', dest='gpu_rank', type=str, help='GPU to be used', required=True)
 parser.add_argument('--cuda', action='store_true', default=False, help='whether to use cuda or not')
+parser.add_argument('--half', action='store_true', default=False, help='Use half precision. This is recommended when using mixed-precision at training time')
 # checkpoint loading args
 parser.add_argument('--model-path', type=str, help='Path to "model" directory, where weights of component of models are saved', required=True)
 # decoder args
@@ -45,6 +46,7 @@ def load_model_components(device, args):
     for i in range(len(model_components)):
         model_components[i].eval()
         model_components[i].to(device)
+        if args.half: model_components[i].half()
 
     return model_components, package['audio_conf'], package['labels'] # e, f, d, asr
 
@@ -74,7 +76,7 @@ def evaluate(test_loader, device, model_components, target_decoder, decoder, arg
             inputs, targets, input_percentages, target_sizes, accents = data
             input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
             inputs = inputs.to(device)
-            
+            if args.half: inputs = inputs.half()
             # Forward pass
             asr_out, asr_out_sizes= forward_call(model_components, inputs, input_sizes, device,args)
             
@@ -107,6 +109,7 @@ def evaluate(test_loader, device, model_components, target_decoder, decoder, arg
 if __name__ == '__main__':
     args = parser.parse_args()
     torch.set_grad_enabled(False)
+    if args.half: print("Using FP16")
     device = torch.device(f"cuda:{args.gpu_rank}" if args.cuda else "cpu")
 
     model_components, audio_conf, labels  = load_model_components(device, args)
