@@ -235,7 +235,7 @@ if __name__ == '__main__':
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
 
     [i[0].train() for i in models.values()] # putting all the models in training state
-    for epoch in range(start_epoch, args.epochs): #updating the discriminator only  
+    for epoch in range(start_epoch, args.epochs): # updating the discriminator only  
         for i, (data) in enumerate(disc_train_loader, start=start_iter): 
 
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero

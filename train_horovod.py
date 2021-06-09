@@ -11,7 +11,8 @@ import numpy as np
 from collections import OrderedDict
 import pandas as pd
 import horovod.torch as hvd
-from config.config_small import *
+#from config.config_small import *
+from config.config_new import *
 #from config.config_large import *
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
@@ -534,6 +535,11 @@ if __name__ == '__main__':
                     g['lr'] = g['lr'] * args.learning_anneal
             print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
         dummy_lr = None
+        
+        if not args.no_shuffle:
+            print("Shuffling batches...")
+            train_sampler.shuffle(epoch)
+
 
         if hvd.rank() == 0:
             with torch.no_grad():
@@ -600,11 +606,6 @@ if __name__ == '__main__':
                 break
 
             d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
-
-
-        if not args.no_shuffle:
-            print("Shuffling batches...")
-            train_sampler.shuffle(epoch)
 
     writer.close()
 

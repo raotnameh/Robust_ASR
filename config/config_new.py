@@ -22,22 +22,33 @@ def configPre():
     ]
 
     return prepare_info(layers)
+
     
 def configE():
     layers = [
         [5,11,1,256,0.2,1,True],
+        [5,11,1,256,0.2,1,True],
+        [5,11,1,256,0.2,1,True],
+        [5,11,1,256,0.2,1,True],
         [5,11,1,384,0.2,1,True],
-        [5,11,1,512,0.2,1,True],
-        [5,11,1,640,0.3,1,True],
-        [5,11,1,768,0.3,1,True],
-    ]
+        [5,11,1,384,0.2,1,True],
+        [5,11,1,384,0.2,1,True],
+        [5,11,1,384,0.2,1,True],
+        [1,13,1,512,0.2,1,True],
+        [1,15,1,684,0.4,1,True],
+        [1,17,1,684,0.4,1,True],
+        [1,19,1,684,0.4,1,True],
+        [1,21,1,740,0.4,1,True],
+        [1,23,1,740,0.4,1,True],
+        [1,25,1,740,0.4,1,True],
+        ]
 
     return prepare_info(layers)
 
 def configD():
     layers = [
-        [5,11,1,512,0.2,1,True],
-        [1,19,1,256,0.2,1,True],
+        [1,11,1,512,0.2,1,True],
+        [5,19,1,256,0.2,1,True],
         [1,11,2,161,0.0,1,False],
     ]
 
@@ -69,3 +80,18 @@ def configDM():
     return prepare_info(layers)
 
 # f"python {file}.py --train-manifest {train_} --val-manifest {test_} --batch-size {batch_size} --epochs 500 --cuda --lr 0.0015 --checkpoint --gpu-rank {gpu_rank} --exp-name save/{save} --alpha 0.0001 --beta 0.2 --gamma 0.6 --fp16"
+
+# def configE():
+#     layers = [
+#         [5,11,1,256,0.2,1,True],
+#         [5,11,1,256,0.2,1,True],
+#         # [1,33,1,384,0.2,1,True],
+#         [5,11,1,384,0.2,1,True],
+#         [5,11,1,384,0.2,1,True],
+#         # [1,33,1,384,0.2,1,True],
+#         [5,11,1,512,0.2,1,True],
+#         [5,11,1,512,0.2,1,True],
+#         # [1,33,1,512,0.2,1,True],
+#         ]
+
+#     return prepare_info(layers)
