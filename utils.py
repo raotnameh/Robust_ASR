@@ -104,9 +104,10 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,fine
             # Forward pass
             x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
             z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-            m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
             if finetune: z_ = z
-            else: z_ = z * m # Forget Operation
+            else: 
+                m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
+                z_ = z * m # Forget Operation
 
             discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
             asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
@@ -175,8 +176,12 @@ def Normalize(input):
     '''
 
 def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder):
-    if hvd.rank() == 0: package = torch.load(args.warmup, map_location=(f"cuda:0" if args.cuda else "cpu"))
+
     if hvd.rank() == 0:
+        finetune_acc = [0.0]
+        if args.warmup: package = torch.load(args.warmup, map_location=(f"cuda:0" if args.cuda else "cpu"))
+        else: package = torch.load(args.continue_from, map_location=(f"cuda:0" if args.cuda else "cpu"))
+
         with torch.no_grad():
             wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,finetune=True,eps=0.0000000001)
         
@@ -202,7 +207,6 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
         d_avg_loss, d_counter = 0, 0
-        finetune_acc = []
         for i, (data) in enumerate(disc_train_loader):
             
             # Data loading
@@ -227,7 +231,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
             valid_loss, error = check_loss(discriminator_loss, d_loss)
             if valid_loss:
                 scaler.scale(discriminator_loss).backward()
-                for i_ in ['discriminator']: # ['encoder', 'preprocessing', 'discriminator']:
+                for i_ in ['discriminator']: # 'encoder', 'preprocessing', 
                     models[i_][-1].synchronize()
                     with models[i_][-1].skip_synchronize():
                         scaler.step(models[i_][-1])
@@ -273,10 +277,10 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
                     'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
 
             # saving
-            if len(finetune_acc) == 0 or finetune_acc[-1] < num/length *100:
+            if len(finetune_acc) == 1 or finetune_acc[-1] < num/length *100:
                 print("Updating the final model!")
                 save = {}
-                for s_ in ['discriminator']:
+                for s_ in models.keys(): 
                     save[s_] = []
                     save[s_].append(models[s_][0]) 
                     save[s_].append(models[s_][1]) 
