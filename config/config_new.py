@@ -95,3 +95,8 @@ def configDM():
 #         ]
 
 #     return prepare_info(layers)
+
+
+
+
+# python test.py --test-manifest csvs/accent_cv/test/test2.csv --model-path /home/hemant/updated_v2/save/modified_fnet/enus/asr/models/ckpt_599.pth --gpu-rank 3 --cuda --batch-size 64 --decoder beam --lm-path lm/enus.binary --beam-width 256 --alpha 1.5 --beta 4.714

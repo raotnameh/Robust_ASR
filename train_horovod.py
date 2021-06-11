@@ -11,8 +11,8 @@ import numpy as np
 from collections import OrderedDict
 import pandas as pd
 import horovod.torch as hvd
-#from config.config_small import *
-from config.config_new import *
+from config.config_small import *
+# from config.config_new import *
 #from config.config_large import *
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
@@ -301,6 +301,10 @@ if __name__ == '__main__':
     
     alpha, beta, gamma = args.alpha, args.beta, args.gamma
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
+
+    # Finetuning the discriminator.
+    if not args.train_asr: finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels)
+
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
@@ -531,7 +535,7 @@ if __name__ == '__main__':
         for i in models:
             for g in models[i][-1].param_groups:
                 if dummy_lr is None: dummy_lr = g['lr']
-                if g['lr'] >= 1e-6:
+                if g['lr'] >= 1e-10:
                     g['lr'] = g['lr'] * args.learning_anneal
             print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
         dummy_lr = None
@@ -543,7 +547,7 @@ if __name__ == '__main__':
 
         if hvd.rank() == 0:
             with torch.no_grad():
-                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001)
+                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001)
             
             f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
             a += f"{epoch},{epoch_time},{wer},{cer},{num/length *100},{weighted_precision},{weighted_recall},{weighted_f1},{d_avg_loss},{p_avg_loss},{args.alpha},{args.beta},{args.gamma}\n"

@@ -9,6 +9,8 @@ import json
 import numpy as np
 from tqdm.auto import tqdm
 
+import horovod.torch as hvd
+
 def check_loss(loss, loss_value):
     """
     Check that warp-ctc loss is valid and will not break training
@@ -81,7 +83,7 @@ def weights_(args, accent_dict):
         else: print(f"error in weighted loss")
     return torch.sum(disc_loss_weights) / disc_loss_weights
 
-def validation(test_loader,GreedyDecoder, models, args,accent,device,loss_save,labels,eps=0.0000000001):
+def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001):
     [i[0].eval() for i in models.values()]
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
@@ -169,3 +171,103 @@ def Normalize(input):
     '''
     Normalize the input such that it only varies in the direction and not the magnitude
     '''
+
+def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels):
+    
+    if hvd.rank() == 0:
+        with torch.no_grad():
+            wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001)
+        
+        # Logging to tensorboard.
+        writer.add_scalar('Finetune/Average-WER', wer, 0)
+        writer.add_scalar('Finetune/Average-CER', cer, 0)
+        writer.add_scalar('Finetune/Discriminator-Accuracy', num/length *100, 0)
+        writer.add_scalar('Finetune/Discriminator-Precision', weighted_precision, 0)
+        writer.add_scalar('Finetune/Discriminator-Recall', weighted_recall, 0)
+        writer.add_scalar('Finetune/Discriminator-F1', weighted_f1, 0)
+        
+        print('Validation Summary Epoch: [{0}]\t'
+                'Average WER {wer:.3f}\t'
+                'Average CER {cer:.3f}\t'
+                'Accuracy {acc_: .3f}\t'
+                'Discriminator accuracy (micro) {acc: .3f}\t'
+                'Discriminator precision (micro) {pre: .3f}\t'
+                'Discriminator recall (micro) {rec: .3f}\t'
+                'Discriminator F1 (micro) {f1: .3f}\t'.format(0, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
+
+    for epoch in range(100):
+        
+        [i[0].train() for i in models.values()] # putting all the models in training state
+        start_epoch_time = time.time()
+        d_avg_loss, d_counter = 0, 0
+        finetune_acc = []
+        for i, (data) in enumerate(disc_train_loader):
+            
+            # Data loading
+            inputs_, targets_, input_percentages_, target_sizes_, accents_ = data
+            input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
+            inputs_ = inputs_.to(device)
+            accents_ = torch.tensor(accents_).to(device)
+                       
+            d_counter += 1
+            [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
+
+            with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
+                # Forward pass
+                with torch.no_grad():
+                    x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
+                    z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
+                discriminator_out = models['discriminator'][0](z, updated_lengths) # Discriminator network
+                # Loss             
+                discriminator_loss = models['discriminator'][1](discriminator_out, accents_)
+
+            d_loss = discriminator_loss.item()
+            valid_loss, error = check_loss(discriminator_loss, d_loss)
+            if valid_loss:
+                scaler.scale(discriminator_loss).backward()
+                models['discriminator'][-1].synchronize()
+                with models['discriminator'][-1].skip_synchronize():
+                    scaler.step(models['discriminator'][-1])
+                scaler.update()
+            else: 
+                print(error)
+                print("Skipping grad update")
+                d_loss = 0.0
+            
+            d_avg_loss += d_loss
+
+            if hvd.rank() == 0:
+                if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(disc_train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
+                # Logging to tensorboard.
+                writer.add_scalar('Finetune/Discriminator-finetune-loss', d_loss, len(disc_train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
+            
+        epoch_time = time.time() - start_epoch_time
+        if hvd.rank() == 0:
+            print('Training discriminator Summary Epoch: [{0}]\t'
+              'Time taken (s): {1}\t'
+              'D average Loss {2}\t'.format(epoch + 1, epoch_time, round(d_avg_loss/d_counter,4)))
+
+
+        if hvd.rank() == 0:
+            with torch.no_grad():
+                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001)
+            
+            # Logging to tensorboard.
+            writer.add_scalar('Finetune/Average-WER', wer, epoch+1)
+            writer.add_scalar('Finetune/Average-CER', cer, epoch+1)
+            writer.add_scalar('Finetune/Discriminator-Accuracy', num/length *100, epoch+1)
+            writer.add_scalar('Finetune/Discriminator-Precision', weighted_precision, epoch+1)
+            writer.add_scalar('Finetune/Discriminator-Recall', weighted_recall, epoch+1)
+            writer.add_scalar('Finetune/Discriminator-F1', weighted_f1, epoch+1)
+            
+            print('Validation Summary Epoch: [{0}]\t'
+                    'Average WER {wer:.3f}\t'
+                    'Average CER {cer:.3f}\t'
+                    'Accuracy {acc_: .3f}\t'
+                    'Discriminator accuracy (micro) {acc: .3f}\t'
+                    'Discriminator precision (micro) {pre: .3f}\t'
+                    'Discriminator recall (micro) {rec: .3f}\t'
+                    'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
+            
+            finetune_acc.append(num/length *100)
+            if finetune_acc[-10] >= finetune_acc[-1]: break
