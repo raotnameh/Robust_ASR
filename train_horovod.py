@@ -306,7 +306,7 @@ if __name__ == '__main__':
 
     # Finetuning the discriminator.
     if args.finetune_disc and args.warmup:
-        finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels)
+        finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder)
         exit()
 
     for epoch in range(start_epoch, args.epochs):

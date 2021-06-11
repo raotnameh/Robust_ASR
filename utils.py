@@ -174,8 +174,8 @@ def Normalize(input):
     Normalize the input such that it only varies in the direction and not the magnitude
     '''
 
-def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels):
-    
+def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder):
+    if hvd.rank() == 0: package = torch.load(args.warmup, map_location=(f"cuda:0" if args.cuda else "cpu"))
     if hvd.rank() == 0:
         with torch.no_grad():
             wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,finetune=True,eps=0.0000000001)
@@ -227,7 +227,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
             valid_loss, error = check_loss(discriminator_loss, d_loss)
             if valid_loss:
                 scaler.scale(discriminator_loss).backward()
-                for i_ in ['encoder', 'preprocessing', 'discriminator']:
+                for i_ in ['discriminator']: # ['encoder', 'preprocessing', 'discriminator']:
                     models[i_][-1].synchronize()
                     with models[i_][-1].skip_synchronize():
                         scaler.step(models[i_][-1])
@@ -271,25 +271,24 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
                     'Discriminator precision (micro) {pre: .3f}\t'
                     'Discriminator recall (micro) {rec: .3f}\t'
                     'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
-            
-            finetune_acc.append(num/length *100)
 
             # saving
-            if finetune_acc is None or finetune_acc[-1] < num/length *100:
+            if len(finetune_acc) == 0 or finetune_acc[-1] < num/length *100:
                 print("Updating the final model!")
                 save = {}
-                for s_ in models.keys():
+                for s_ in ['discriminator']:
                     save[s_] = []
                     save[s_].append(models[s_][0]) 
                     save[s_].append(models[s_][1]) 
                     save[s_].append(models[s_][2].state_dict()) 
-                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
+                package['models'] = save
                 torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
                 del save
-                
+
+            finetune_acc.append(num/length *100)    
             if epoch >= 50:
                 if finetune_acc[-10] >= finetune_acc[-1]: break
-
+                        
         # anneal lr
         dummy_lr = None
         for i in models:
