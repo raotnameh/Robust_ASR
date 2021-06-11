@@ -45,6 +45,8 @@ parser.add_argument('--checkpoint-per-batch', default=0, type=int, help='Save ch
 parser.add_argument('--continue-from', default='', help='Continue from checkpoint model')
 parser.add_argument('--finetune', dest='finetune', action='store_true',
                     help='Finetune the model from checkpoint "continue_from"')
+parser.add_argument('--finetune-disc', dest='finetune_disc', action='store_true',
+                    help='Finetune the discriminator from checkpoint "continue_from"')
 parser.add_argument('--no-shuffle', dest='no_shuffle', action='store_true',
                     help='Turn off shuffling and sample from dataset based on sequence length (smallest to largest)')
 parser.add_argument('--no-sortaGrad', dest='no_sorta_grad', action='store_true',
@@ -303,7 +305,9 @@ if __name__ == '__main__':
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
 
     # Finetuning the discriminator.
-    if not args.train_asr: finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels)
+    if args.finetune_disc and args.warmup:
+        finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels)
+        exit()
 
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state

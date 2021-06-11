@@ -83,7 +83,7 @@ def weights_(args, accent_dict):
         else: print(f"error in weighted loss")
     return torch.sum(disc_loss_weights) / disc_loss_weights
 
-def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001):
+def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,finetune=False,eps=0.0000000001):
     [i[0].eval() for i in models.values()]
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
@@ -105,7 +105,9 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,eps=
             x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
             z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
             m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
-            z_ = z * m # Forget Operation
+            if finetune: z_ = z
+            else: z_ = z * m # Forget Operation
+
             discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
             asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
         else:
@@ -176,7 +178,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
     
     if hvd.rank() == 0:
         with torch.no_grad():
-            wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001)
+            wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,finetune=True,eps=0.0000000001)
         
         # Logging to tensorboard.
         writer.add_scalar('Finetune/Average-WER', wer, 0)
@@ -214,7 +216,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
 
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
-                with torch.no_grad():
+                with torch.no_grad(): 
                     x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
                     z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
                 discriminator_out = models['discriminator'][0](z, updated_lengths) # Discriminator network
@@ -225,9 +227,10 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
             valid_loss, error = check_loss(discriminator_loss, d_loss)
             if valid_loss:
                 scaler.scale(discriminator_loss).backward()
-                models['discriminator'][-1].synchronize()
-                with models['discriminator'][-1].skip_synchronize():
-                    scaler.step(models['discriminator'][-1])
+                for i_ in ['encoder', 'preprocessing', 'discriminator']:
+                    models[i_][-1].synchronize()
+                    with models[i_][-1].skip_synchronize():
+                        scaler.step(models[i_][-1])
                 scaler.update()
             else: 
                 print(error)
@@ -250,7 +253,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
 
         if hvd.rank() == 0:
             with torch.no_grad():
-                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001)
+                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,finetune=True,eps=0.0000000001)
             
             # Logging to tensorboard.
             writer.add_scalar('Finetune/Average-WER', wer, epoch+1)
@@ -270,4 +273,33 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
                     'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
             
             finetune_acc.append(num/length *100)
-            if finetune_acc[-10] >= finetune_acc[-1]: break
+
+            # saving
+            if finetune_acc is None or finetune_acc[-1] < num/length *100:
+                print("Updating the final model!")
+                save = {}
+                for s_ in models.keys():
+                    save[s_] = []
+                    save[s_].append(models[s_][0]) 
+                    save[s_].append(models[s_][1]) 
+                    save[s_].append(models[s_][2].state_dict()) 
+                package = {'models': save , 'start_epoch': epoch+1, 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': None, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
+                torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
+                del save
+                
+            if epoch >= 50:
+                if finetune_acc[-10] >= finetune_acc[-1]: break
+
+        # anneal lr
+        dummy_lr = None
+        for i in models:
+            for g in models[i][-1].param_groups:
+                if dummy_lr is None: dummy_lr = g['lr']
+                if g['lr'] >= 1e-6:
+                    g['lr'] = g['lr'] * args.learning_anneal
+            print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
+        dummy_lr = None
+        
+        if not args.no_shuffle:
+            print("Shuffling batches...")
+            disc_train_sampler.shuffle(epoch)
