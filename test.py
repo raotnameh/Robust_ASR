@@ -69,8 +69,6 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
         tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
         length, num = eps, eps
         for i, (data) in tqdm(enumerate(test_loader), total=len(test_loader)):
-            if i==len(test_loader)-2:
-                break
             if data is None:
                 continue
             # Data loading

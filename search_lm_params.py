@@ -35,7 +35,11 @@ if args.lm_path is None:
 
 device = torch.device("cpu")
 labels = load_model_components(device, args, test=False)
-
+print(f"--{labels}---")
+labels = [' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', "'", '_']
+labels = ''.join(labels).upper()
+print(f"--{labels}---")
+# exit()
 saved_output = torch.load(args.saved_output)
 
 def init(beam_width, blank_index, lm_path):
@@ -52,7 +56,7 @@ def decode_dataset(params):
     for out, sizes, target_strings in saved_output:
         decoded_output, _, = decoder.decode(out, sizes)
         for x in range(len(target_strings)):
-            transcript, reference = decoded_output[x][0], target_strings[x][0]
+            transcript, reference = decoded_output[x][0].strip(), target_strings[x][0].strip()
             wer_inst = decoder.wer(transcript, reference)
             cer_inst = decoder.cer(transcript, reference)
             total_cer += cer_inst

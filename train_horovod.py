@@ -242,11 +242,11 @@ if __name__ == '__main__':
         if not args.train_asr:
             # Forget Network
             fnet = Forget(configE()[-1]['out_channels'],configFN())
-            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr*10,weight_decay=1e-4,amsgrad=True)
+            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
             # Discriminator
             discriminator = Discriminator(configFN()[-1]['out_channels'],configDM(),classes=len(accent))
-            discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr*10,weight_decay=1e-4,amsgrad=True)
+            discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             # Weighted loss depending on the class count 
             disc_loss_weights = weights_(args, accent_dict).to(device)   
             dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights)
@@ -290,7 +290,6 @@ if __name__ == '__main__':
                                    num_workers=args.num_workers, batch_sampler=disc_train_sampler,pin_memory=True)    
         disc_train_sampler.shuffle(start_epoch)
         disc_ = iter(disc_train_loader)
-
     
     if args.no_sorta_grad:
         print("Shuffling batches for the following epochs")
