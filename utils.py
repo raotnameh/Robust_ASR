@@ -231,7 +231,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
             valid_loss, error = check_loss(discriminator_loss, d_loss)
             if valid_loss:
                 scaler.scale(discriminator_loss).backward()
-                for i_ in ['discriminator']: # 'encoder', 'preprocessing', 
+                for i_ in ['discriminator']: 
                     models[i_][-1].synchronize()
                     with models[i_][-1].skip_synchronize():
                         scaler.step(models[i_][-1])
