@@ -55,8 +55,40 @@ if args.lm_path is None:
 device = torch.device("cpu")
 labels = load_model_components(device, args, test=False)
 print(f"--{labels}---")
-labels = [' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
-          'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', "'", '_']
+# labels = [' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
+#           'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', "'", '_']
+labels = [
+    "_",
+    " ", 
+    "E", 
+    "T", 
+    "A", 
+    "O", 
+    "N", 
+    "I", 
+    "H", 
+    "S", 
+    "R", 
+    "D", 
+    "L", 
+    "U", 
+    "M", 
+    "W", 
+    "C", 
+    "F", 
+    "G", 
+    "Y", 
+    "P", 
+    "B", 
+    "V", 
+    "K", 
+    "'", 
+    "X", 
+    "J", 
+    "Q", 
+    "Z" 
+]
+print(len(labels))
 labels = ''.join(labels).upper()
 print(f"using the latest labels--{labels}---")
 # exit()
