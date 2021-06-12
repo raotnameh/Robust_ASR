@@ -58,8 +58,6 @@ def configFN():
 
 def configDM():
     layers = [
-        [2,15,1,640,0.3,1,True],
-        # [2,17,1,780,0.3,1,True],
         [1,29,1,1024,0.4,2,True],
     ]
 

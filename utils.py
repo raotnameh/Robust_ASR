@@ -301,7 +301,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
                 if g['lr'] >= 1e-6:
                     g['lr'] = g['lr'] * args.learning_anneal
             print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
-        dummy_lr = None
+            dummy_lr = None
         
         if not args.no_shuffle:
             print("Shuffling batches...")

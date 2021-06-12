@@ -233,8 +233,11 @@ if __name__ == '__main__':
         elif args.warmup and not args.train_asr:
             package = torch.load(args.warmup, map_location=(f"cuda" if args.cuda else "cpu"))
             models = package['models']
+            dummy = {i:models[i][-1] for i in models}
             for i in models:
-                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=package['lr'],weight_decay=1e-4,amsgrad=True)
+                models[i][-1].load_state_dict(dummy[i])
+            del dummy
         
         if not args.train_asr:
             # Forget Network
@@ -542,7 +545,7 @@ if __name__ == '__main__':
                 if g['lr'] >= 1e-10:
                     g['lr'] = g['lr'] * args.learning_anneal
             print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
-        dummy_lr = None
+            dummy_lr = None
         
         if not args.no_shuffle:
             print("Shuffling batches...")
