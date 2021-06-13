@@ -310,7 +310,8 @@ class disc_last(nn.Module):
                         OrderedDict([
                             (f'adaptive_{name}',nn.AdaptiveAvgPool1d(8)),
                             (f'dropout_{name}', nn.Dropout(p=0.5)),
-                            (f"flatten_{name}", nn.Flatten()),
+                            (f"flatten_{name}", nn.Flatt
+                            en()),
                             (f'linear_{name}',torch.nn.Linear(info[-1]['out_channels']*8, classes)),
                         ])
         )
