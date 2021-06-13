@@ -70,7 +70,6 @@ def configFN1():
 
 
 
-
 def configDM():
     layers = [
         [1,29,1,4,0.4,2,True],
