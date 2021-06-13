@@ -12,40 +12,40 @@ from utils import load_model_components
 
 parser = argparse.ArgumentParser(description='Tune an ARPA LM based on a pre-trained acoustic model output')
 
-parser.add_argument('--model-path', default='models/ckpt_final.pth',
-                    help='Path to model file created by training')
-parser.add_argument('--saved-output', default="", type=str, help='Path to output from test.py')
-parser.add_argument('--num-workers', default=16, type=int, help='Number of parallel decodes to run')
-parser.add_argument('--output-path', default="tune_results.json", help="Where to save tuning results")
-parser.add_argument('--lm-alpha-from', default=1.75, type=float, help='Language model weight start tuning')
-parser.add_argument('--lm-alpha-to', default=1.75, type=float, help='Language model weight end tuning')
-parser.add_argument('--lm-beta-from', default=5.57, type=float,
-                    help='Language model word bonus (all words) start tuning')
-parser.add_argument('--lm-beta-to', default=5.57, type=float,
-                    help='Language model word bonus (all words) end tuning')
-parser.add_argument('--lm-num-alphas', default=1, type=float, help='Number of alpha candidates for tuning')
-parser.add_argument('--lm-num-betas', default=1, type=float, help='Number of beta candidates for tuning')
-parser.add_argument('--lm-path', default='3-gram.pruned.3e-7.arpa', type=str, help='Path to language model')
-parser.add_argument('--lm-workers', default=1, type=int, help='Number of parallel lm workers to run')
-parser.add_argument('--beam-width', default=64, type=int, help='Number of top tokens to consider while decoding')
-
-
 # parser.add_argument('--model-path', default='models/ckpt_final.pth',
 #                     help='Path to model file created by training')
 # parser.add_argument('--saved-output', default="", type=str, help='Path to output from test.py')
 # parser.add_argument('--num-workers', default=16, type=int, help='Number of parallel decodes to run')
 # parser.add_argument('--output-path', default="tune_results.json", help="Where to save tuning results")
-# parser.add_argument('--lm-alpha-from', default=0.0, type=float, help='Language model weight start tuning')
-# parser.add_argument('--lm-alpha-to', default=6.0, type=float, help='Language model weight end tuning')
-# parser.add_argument('--lm-beta-from', default=0.0, type=float,
+# parser.add_argument('--lm-alpha-from', default=1.75, type=float, help='Language model weight start tuning')
+# parser.add_argument('--lm-alpha-to', default=1.75, type=float, help='Language model weight end tuning')
+# parser.add_argument('--lm-beta-from', default=5.57, type=float,
 #                     help='Language model word bonus (all words) start tuning')
-# parser.add_argument('--lm-beta-to', default=6.0, type=float,
+# parser.add_argument('--lm-beta-to', default=5.57, type=float,
 #                     help='Language model word bonus (all words) end tuning')
-# parser.add_argument('--lm-num-alphas', default=25, type=float, help='Number of alpha candidates for tuning')
-# parser.add_argument('--lm-num-betas', default=15, type=float, help='Number of beta candidates for tuning')
+# parser.add_argument('--lm-num-alphas', default=1, type=float, help='Number of alpha candidates for tuning')
+# parser.add_argument('--lm-num-betas', default=1, type=float, help='Number of beta candidates for tuning')
 # parser.add_argument('--lm-path', default='3-gram.pruned.3e-7.arpa', type=str, help='Path to language model')
 # parser.add_argument('--lm-workers', default=1, type=int, help='Number of parallel lm workers to run')
 # parser.add_argument('--beam-width', default=64, type=int, help='Number of top tokens to consider while decoding')
+
+
+parser.add_argument('--model-path', default='models/ckpt_final.pth',
+                    help='Path to model file created by training')
+parser.add_argument('--saved-output', default="", type=str, help='Path to output from test.py')
+parser.add_argument('--num-workers', default=16, type=int, help='Number of parallel decodes to run')
+parser.add_argument('--output-path', default="tune_results.json", help="Where to save tuning results")
+parser.add_argument('--lm-alpha-from', default=0.0, type=float, help='Language model weight start tuning')
+parser.add_argument('--lm-alpha-to', default=6.0, type=float, help='Language model weight end tuning')
+parser.add_argument('--lm-beta-from', default=0.0, type=float,
+                    help='Language model word bonus (all words) start tuning')
+parser.add_argument('--lm-beta-to', default=6.0, type=float,
+                    help='Language model word bonus (all words) end tuning')
+parser.add_argument('--lm-num-alphas', default=25, type=float, help='Number of alpha candidates for tuning')
+parser.add_argument('--lm-num-betas', default=15, type=float, help='Number of beta candidates for tuning')
+parser.add_argument('--lm-path', default='3-gram.pruned.3e-7.arpa', type=str, help='Path to language model')
+parser.add_argument('--lm-workers', default=1, type=int, help='Number of parallel lm workers to run')
+parser.add_argument('--beam-width', default=64, type=int, help='Number of top tokens to consider while decoding')
 args = parser.parse_args()
 
 if args.lm_path is None:
@@ -55,39 +55,39 @@ if args.lm_path is None:
 device = torch.device("cpu")
 labels = load_model_components(device, args, test=False)
 print(f"--{labels}---")
-# labels = [' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
-#           'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', "'", '_']
-labels = [
-    "_",
-    " ", 
-    "E", 
-    "T", 
-    "A", 
-    "O", 
-    "N", 
-    "I", 
-    "H", 
-    "S", 
-    "R", 
-    "D", 
-    "L", 
-    "U", 
-    "M", 
-    "W", 
-    "C", 
-    "F", 
-    "G", 
-    "Y", 
-    "P", 
-    "B", 
-    "V", 
-    "K", 
-    "'", 
-    "X", 
-    "J", 
-    "Q", 
-    "Z" 
-]
+labels = [' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
+          'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', "'", '_']
+# labels = [
+#     "_",
+#     " ", 
+#     "E", 
+#     "T", 
+#     "A", 
+#     "O", 
+#     "N", 
+#     "I", 
+#     "H", 
+#     "S", 
+#     "R", 
+#     "D", 
+#     "L", 
+#     "U", 
+#     "M", 
+#     "W", 
+#     "C", 
+#     "F", 
+#     "G", 
+#     "Y", 
+#     "P", 
+#     "B", 
+#     "V", 
+#     "K", 
+#     "'", 
+#     "X", 
+#     "J", 
+#     "Q", 
+#     "Z" 
+# ]
 print(len(labels))
 labels = ''.join(labels).upper()
 print(f"using the latest labels--{labels}---")

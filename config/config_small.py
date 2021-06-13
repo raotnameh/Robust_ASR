@@ -49,12 +49,28 @@ def configP(labels=29):
 
 def configFN():
     layers = [
-        # [1,11,1,512,0.3,1,True],
-        [1,1,1,512,0.0,1,False],
+        [1,1,1,512,0.2,1,False],
     ]
 
     return prepare_info(layers)
- 
+
+# def configFN():
+#     layers = [
+#         [1,1,1,512,0.3,1,False],
+#     ]
+
+#     return prepare_info(layers)
+
+def configFN1():
+    layers = [
+        [1,1,1,8192,0.3,1,False],
+    ]
+
+    return prepare_info(layers)
+
+
+
+
 def configDM():
     layers = [
         [1,29,1,4,0.4,2,True],

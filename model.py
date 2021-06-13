@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from collections import OrderedDict
 import numpy as np
+from config.config_small import *
 
 class block_B(nn.Module):
     def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2,batch_norm=True,name='pre',groups=1):
@@ -239,6 +240,29 @@ class Pre(nn.Module):
             x, lengths = self.layers[i](x, lengths,)    
         return x, lengths
 
+# class Forget(nn.Module):
+#     def __init__(self,in_channels,info):
+#         super(Forget, self).__init__()
+        
+#         self.layers = nn.ModuleList()
+#         for i in range(len(info)):
+#             # if kernel_size=info[i]['kernel_size']
+#             self.layers.append(
+#                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
+#                     stride=info[i]['stride'], in_channels=in_channels,
+#                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
+#                     groups=in_channels)
+#             )
+#             in_channels = info[i]['out_channels']
+#         # self.last = nn.BatchNorm1d(in_channels)
+        
+#     def forward(self, x, lengths):
+#         for i in range(len(self.layers)):
+#             x, lengths = self.layers[i](x, lengths,)
+#         # x = self.last(x)
+#         return F.relu6(x)/6, lengths 
+
+
 class Forget(nn.Module):
     def __init__(self,in_channels,info):
         super(Forget, self).__init__()
@@ -250,17 +274,19 @@ class Forget(nn.Module):
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
-                    groups=in_channels)
+                    )#groups=in_channels)
             )
             in_channels = info[i]['out_channels']
         # self.last = nn.BatchNorm1d(in_channels)
         
     def forward(self, x, lengths):
+        old = x.shape[-1]
+        x = torch.mean(x,-1,keepdim=True)
         for i in range(len(self.layers)):
             x, lengths = self.layers[i](x, lengths,)
+        x = x.tile(1,1,old)
         # x = self.last(x)
-        return F.relu6(x)/6, lengths 
-
+        return F.relu6(x)/6, lengths
 
 class Encoder(nn.Module):
     def __init__(self,in_channels,info):
@@ -308,11 +334,10 @@ class disc_last(nn.Module):
         super(disc_last, self).__init__()
         self.disc_last = nn.Sequential(
                         OrderedDict([
-                            (f'adaptive_{name}',nn.AdaptiveAvgPool1d(8)),
+                            (f'adaptive_{name}',nn.AdaptiveAvgPool1d(16)),
                             (f'dropout_{name}', nn.Dropout(p=0.5)),
-                            (f"flatten_{name}", nn.Flatt
-                            en()),
-                            (f'linear_{name}',torch.nn.Linear(info[-1]['out_channels']*8, classes)),
+                            (f"flatten_{name}", nn.Flatten()),
+                            (f'linear_{name}',torch.nn.Linear(info[-1]['out_channels']*16, classes)),
                         ])
         )
 
@@ -371,6 +396,8 @@ def get_param_size(model):
             tmp *= x
         params += tmp
     return params
+
+
 
 if __name__ == '__main__':
     
@@ -450,3 +477,32 @@ if __name__ == '__main__':
     P, L_ = asr(Z, lengths=L)    
     print("ASR OUT", P.shape)
     # print(L_)
+
+    class Forget(nn.Module):
+        def __init__(self,in_channels,info):
+            super(Forget, self).__init__()
+            
+            self.layers = nn.ModuleList()
+            for i in range(len(info)):
+                # if kernel_size=info[i]['kernel_size']
+                self.layers.append(
+                    block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
+                        stride=info[i]['stride'], in_channels=in_channels,
+                        out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
+                        )#groups=in_channels)
+                )
+                in_channels = info[i]['out_channels']
+            # self.last = nn.BatchNorm1d(in_channels)
+            
+        def forward(self, x, lengths):
+            old = x.shape[-1]
+            x = torch.mean(x,-1,keepdim=True)
+            print(x.shape)
+            for i in range(len(self.layers)):
+                x, lengths = self.layers[i](x, lengths,)
+            print(x.shape)
+            x = x.tile(1,1,old)
+            print(x.shape)
+            exit()
+            # x = self.last(x)
+            return F.relu6(x)/6, lengths 
