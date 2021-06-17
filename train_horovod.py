@@ -64,6 +64,7 @@ parser.add_argument('--disc-kl-loss', action='store_true',
 parser.add_argument('--early-val', default=10e-10, type=int,
                     help='Doing an early validation step')                    
 parser.add_argument('--warmup', default=None, help='start-from from checkpoint model')
+parser.add_argument('--use-decoder', action='store_true', help='To use decoder or no')
 
 # Model arguements
 parser.add_argument('--update-rule', default=2, type=int,
@@ -220,10 +221,12 @@ if __name__ == '__main__':
             encoder = Encoder(configPre()[-1]['out_channels'],configE())
             e_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             models['encoder'] = [encoder, None, e_optimizer]
-            decoder = Decoder(configE()[-1]['out_channels'],configD())
-            d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
-            dec_loss = Decoder_loss(nn.MSELoss())
-            models['decoder'] = [decoder, dec_loss, d_optimizer]
+            if args.use_decoder:
+                print("Using the Decoder")
+                decoder = Decoder(configE()[-1]['out_channels'],configD())
+                d_optimizer = torch.optim.Adam(decoder.parameters(),lr=args.lr,weight_decay=1e-4,amsgrad=True)
+                dec_loss = Decoder_loss(nn.MSELoss())
+                models['decoder'] = [decoder, dec_loss, d_optimizer]
             
             # ASR
             asr = Predictor(configE()[-1]['out_channels'],configP(labels=len(labels)))
@@ -233,6 +236,11 @@ if __name__ == '__main__':
         elif args.warmup and not args.train_asr:
             package = torch.load(args.warmup, map_location=(f"cuda" if args.cuda else "cpu"))
             models = package['models']
+            if not args.use_decoder:
+                try: 
+                    print("Deleting the decoder")
+                    del models['decoder']
+                except: print("Did not find the decoder") 
             dummy = {i:models[i][-1] for i in models}
             for i in models:
                 models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=package['lr'],weight_decay=1e-4,amsgrad=True)
@@ -373,14 +381,15 @@ if __name__ == '__main__':
                     # Forward pass                    
                     x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                     z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-                    decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                    if args.use_decoder: decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                     asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
                     # Loss         
                     asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
                     asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
-                    decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) 
+                    if args.use_decoder: decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) 
                 
-                    loss = asr_loss + (decoder_loss * alpha)
+                    if args.use_decoder: loss = asr_loss  + (decoder_loss * alpha)
+                    else: loss = asr_loss 
 
                 valid_loss, error = check_loss(loss, loss.item())
                 if valid_loss:
@@ -391,7 +400,8 @@ if __name__ == '__main__':
                             scaler.step(models[i_][-1])
                     scaler.update()
                     p_loss = asr_loss.item()
-                    d_loss = decoder_loss.item() 
+                    if args.use_decoder: d_loss = decoder_loss.item() 
+                    else: d_loss = 0
                 else: 
                     print(error)
                     print("Skipping grad update")
