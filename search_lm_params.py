@@ -101,7 +101,7 @@ def decode_dataset(params):
 
     wer = float(total_wer) / num_tokens
     cer = float(total_cer) / num_chars
-    print(wer*100,cer*100)
+    # print(wer*100,cer*100)
     return [lm_alpha, lm_beta, wer * 100, cer * 100]
 
 if __name__ == '__main__':
