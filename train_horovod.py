@@ -250,7 +250,7 @@ if __name__ == '__main__':
         if not args.train_asr:
             # Forget Network
             fnet = Forget(configE()[-1]['out_channels'],configFN())
-            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=10*args.lr,weight_decay=1e-4,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
             # Discriminator
             discriminator = Discriminator(configFN()[-1]['out_channels'],configDM(),classes=len(accent))
@@ -481,46 +481,48 @@ if __name__ == '__main__':
 
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
-                x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
-                z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-                decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
+                with torch.no_grad():
+                    x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
+                    z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
+                # if args.use_decoder: decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
                 m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
                 z_ = z * m # Forget Operation
                 discriminator_out = models['discriminator'][0](z_, updated_lengths_) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
                 # Loss                
-                # print(models['forget_net'][0])
-                # print(models['forget_net'][0].layers[0].layers[0].conv_Forget)
-                # linear_params = torch.cat([x.view(-1) for x in models['forget_net'][0].layers[0].layers[0].conv_Forget.parameters()])
-                # L1_loss = torch.norm(m, 1)
-                # print(i,L1_loss)
-                # print(m.shape)
-                # exit()
-                # if i%5 == 4: print(m[0])
                 discriminator_loss = models['discriminator'][1](discriminator_out, accents) * beta
                 p_d_loss = discriminator_loss.item()    
         
                 mask_regulariser_loss = (m * (1-m)).mean() * gamma
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
+                # decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) * alpha
             
-            loss = asr_loss + mask_regulariser_loss + decoder_loss 
+            loss = asr_loss + mask_regulariser_loss #+ decoder_loss 
 
-            scaler.scale(discriminator_loss).backward(retain_graph=True)
-            for i_ in models.keys():
-                models[i_][-1].synchronize()
-            models['encoder'][-1].zero_grad()
+            # scaler.scale(discriminator_loss).backward(retain_graph=True)
+            # for i_ in models.keys():
+            #     models[i_][-1].synchronize()
+            # models['encoder'][-1].zero_grad()
 
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
+            # if valid_loss:
+            #     scaler.scale(loss).backward()
+            #     for i_ in models.keys():
+            #         models[i_][-1].synchronize()
+            #         if i_ != 'discriminator':
+            #             with models[i_][-1].skip_synchronize():
+            #                 scaler.step(models[i_][-1])
+            #     scaler.update()
+            #     p_avg_loss += asr_loss.item()
+            #     p_d_avg_loss += p_d_loss
             if valid_loss:
                 scaler.scale(loss).backward()
-                for i_ in models.keys():
+                for i_ in ['predictor', 'forget_net']:
                     models[i_][-1].synchronize()
-                    if i_ != 'discriminator':
-                        with models[i_][-1].skip_synchronize():
-                            scaler.step(models[i_][-1])
+                    with models[i_][-1].skip_synchronize():
+                        scaler.step(models[i_][-1])
                 scaler.update()
                 p_avg_loss += asr_loss.item()
                 p_d_avg_loss += p_d_loss

@@ -87,7 +87,7 @@ def decode_dataset(params):
     decoder._decoder.reset_params(lm_alpha, lm_beta)
 
     total_cer, total_wer, num_tokens, num_chars = 0, 0, 0, 0
-    for out, sizes, target_strings in tqdm(saved_output):
+    for out, sizes, target_strings in saved_output:
         decoded_output, _, = decoder.decode(out, sizes)
         for x in range(len(target_strings)):
             transcript, reference = decoded_output[x][0].strip(), target_strings[x][0].strip()
