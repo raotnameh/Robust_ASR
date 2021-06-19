@@ -157,7 +157,7 @@ if __name__ == '__main__':
         audio_conf['noise_dir'] = args.noise_dir
         audio_conf['noise_prob'] = args.noise_prob
         audio_conf['noise_levels'] = (args.noise_min, args.noise_max)
-        del models['forget_net']
+
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
         else: 
@@ -166,7 +166,7 @@ if __name__ == '__main__':
                 del models['forget_net']
                 del models['discriminator']
             except: pass
-        
+        del models['forget_net']
         if not args.finetune: # If continuing training after the last epoch.
             
             dummy = {i:models[i][-1] for i in models}
@@ -444,7 +444,7 @@ if __name__ == '__main__':
             valid_loss, error = check_loss(loss, p_loss)
             if valid_loss:
                 scaler.scale(loss).backward()
-                for i_ in ['predictor', 'preprocessing', 'encoder', 'discriminator']:
+                for i_ in models:
                     models[i_][-1].synchronize()
                     with models[i_][-1].skip_synchronize():
                         scaler.step(models[i_][-1])
