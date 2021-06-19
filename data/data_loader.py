@@ -115,7 +115,7 @@ class SpectrogramParser(AudioParser):
         self.spec_augment = spec_augment
     
         if use_noise:
-            print("using-noise")
+            # print("using-noise")
             self.noiseInjector = NoiseInjection(audio_conf['noise_dir'], self.sample_rate,
                                             audio_conf['noise_levels']) if audio_conf.get(
                 'noise_dir') is not None else None

@@ -175,7 +175,7 @@ def Normalize(input):
     Normalize the input such that it only varies in the direction and not the magnitude
     '''
 
-def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder,finetune_epoch=100):
+def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder,finetune_epoch=200):
 
     if hvd.rank() == 0:
         finetune_acc = [0.0]

@@ -334,10 +334,10 @@ class disc_last(nn.Module):
         super(disc_last, self).__init__()
         self.disc_last = nn.Sequential(
                         OrderedDict([
-                            (f'adaptive_{name}',nn.AdaptiveAvgPool1d(32)),
+                            (f'adaptive_{name}',nn.AdaptiveAvgPool1d(16)),
                             (f'dropout_{name}', nn.Dropout(p=0.5)),
                             (f"flatten_{name}", nn.Flatten()),
-                            (f'linear_{name}',torch.nn.Linear(info[-1]['out_channels']*32, classes)),
+                            (f'linear_{name}',torch.nn.Linear(info[-1]['out_channels']*16, classes)),
                         ])
         )
 
