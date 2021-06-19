@@ -254,7 +254,6 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
               'Time taken (s): {1}\t'
               'D average Loss {2}\t'.format(epoch + 1, epoch_time, round(d_avg_loss/d_counter,4)))
 
-
         if hvd.rank() == 0:
             with torch.no_grad():
                 wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,finetune=True,eps=0.0000000001)

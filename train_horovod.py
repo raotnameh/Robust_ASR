@@ -190,7 +190,8 @@ if __name__ == '__main__':
             a = ""
             version_ = args.version
             for i in models:
-                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+                if i == "forget_net": models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=10*args.lr,weight_decay=1e-4,amsgrad=True)    
+                else: models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         # print(best_cer, best_wer, audio_conf,start_iter)
         print("loaded models succesfully")
     else:
@@ -315,7 +316,8 @@ if __name__ == '__main__':
     scaler = torch.cuda.amp.GradScaler(enabled=True if args.fp16 else False) # fp16 training
 
     # Finetuning the discriminator.
-    if args.finetune_disc and (args.warmup or args.continue_from):
+    if args.finetune_disc and (not args.train_asr) and (args.warmup or args.continue_from):
+        print("Finetuning discriminator")
         finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder)
         exit()
 
