@@ -157,7 +157,7 @@ if __name__ == '__main__':
         audio_conf['noise_dir'] = args.noise_dir
         audio_conf['noise_prob'] = args.noise_prob
         audio_conf['noise_levels'] = (args.noise_min, args.noise_max)
-    
+        del models['forget_net']
         if not args.train_asr: # if adversarial training.
             assert 'discrimator' and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
         else: 
@@ -418,7 +418,7 @@ if __name__ == '__main__':
                     if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)}/{round(d_avg_loss/p_counter,4)})") 
                 continue
             
-            accents = torch.tensor(dummy).to(device)
+            accents = torch.tensor(accents).to(device)
 
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
             p_counter += 1
