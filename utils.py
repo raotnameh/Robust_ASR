@@ -278,7 +278,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
                     'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
 
             # saving
-            if len(finetune_acc) == 1 or finetune_acc[-1] < num/length *100:
+            if len(finetune_acc) == 1 or max(finetune_acc) < num/length *100:
                 print("Updating the final model!")
                 save = {}
                 for s_ in models.keys(): 
