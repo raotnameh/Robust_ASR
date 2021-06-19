@@ -306,6 +306,7 @@ class Encoder(nn.Module):
         for i in range(len(self.layers)):
             # print(i, "-------",x.shape)
             x, lengths = self.layers[i](x, lengths,)
+        
         return x, lengths 
 
 class Predictor(nn.Module):
@@ -325,7 +326,8 @@ class Predictor(nn.Module):
     def forward(self, x, lengths):
         for i in range(len(self.layers)):
             # print(i, "-------",x.shape)
-            x, lengths = self.layers[i](x, lengths,)
+            x, lengths = self.layers[i](x, lengths)
+        
         return x.permute(0,2,1), lengths # batch_size, seq_length,classes
 
 
@@ -340,7 +342,7 @@ class disc_last(nn.Module):
 
         self.disc_last = nn.Sequential(
                         OrderedDict([
-                            (f'dropout_{name}', nn.Dropout(p=0.5)),
+                            (f'dropout_{name}', nn.Dropout(p=0.3)),
                             (f"flatten_{name}", nn.Flatten()),
                             (f'linear_{name}',torch.nn.Linear(info[-1]['out_channels']*16, classes)),
                         ])

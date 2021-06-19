@@ -56,7 +56,7 @@ def configFN():
 
 def configDM():
     layers = [
-        [1,29,1,1,0.4,2,True],
+        [1,29,1,4,0.4,2,True],
     ]
 
     return prepare_info(layers)

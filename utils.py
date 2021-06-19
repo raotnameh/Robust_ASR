@@ -108,16 +108,18 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,fine
             else: 
                 m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
                 z_ = z * m # Forget Operation
-
+            
             discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
             asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
-            # print(asr_out)
+
+            
         else:
             # Forward pass                  
             x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
             z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
             asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
     
+        asr_out = asr_out.softmax(2).float()
         # Predictor metric
         split_targets = []
         offset = 0
@@ -135,7 +137,6 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,fine
             total_cer += cer_inst
             num_tokens += len(reference.split())
             num_chars += len(reference.replace(' ', ''))
-
         
         if not args.train_asr:
             # Discriminator metrics: fill in the confusion matrix.
@@ -203,7 +204,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
                 'Discriminator recall (micro) {rec: .3f}\t'
                 'Discriminator F1 (micro) {f1: .3f}\t'.format(0, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
 
-    for epoch in range(100):
+    for epoch in range(args.epochs):
         
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
