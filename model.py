@@ -332,9 +332,14 @@ class Predictor(nn.Module):
 class disc_last(nn.Module):
     def __init__(self,info,classes,name='disc'):
         super(disc_last, self).__init__()
-        self.disc_last = nn.Sequential(
+        self.avg_pool = nn.Sequential(
                         OrderedDict([
                             (f'adaptive_{name}',nn.AdaptiveAvgPool1d(16)),
+                        ])
+        )
+
+        self.disc_last = nn.Sequential(
+                        OrderedDict([
                             (f'dropout_{name}', nn.Dropout(p=0.5)),
                             (f"flatten_{name}", nn.Flatten()),
                             (f'linear_{name}',torch.nn.Linear(info[-1]['out_channels']*16, classes)),
@@ -342,7 +347,13 @@ class disc_last(nn.Module):
         )
 
     def forward(self,x,lengths):
+        dummy = [] 
+        for k,i in enumerate(x):
+            dummy.append(self.avg_pool(i[:,:lengths[k]].view(1,-1,lengths[k])))
+        x = torch.cat(dummy,0)
+        del dummy
         return self.disc_last(x), lengths
+        
 
 class Discriminator(nn.Module):
     def __init__(self,in_channels,info,classes):
@@ -506,3 +517,5 @@ if __name__ == '__main__':
             exit()
             # x = self.last(x)
             return F.relu6(x)/6, lengths 
+
+

@@ -54,25 +54,9 @@ def configFN():
 
     return prepare_info(layers)
 
-# def configFN():
-#     layers = [
-#         [1,1,1,512,0.3,1,False],
-#     ]
-
-#     return prepare_info(layers)
-
-def configFN1():
-    layers = [
-        [1,1,1,8192,0.3,1,False],
-    ]
-
-    return prepare_info(layers)
-
-
-
 def configDM():
     layers = [
-        [1,29,1,4,0.4,2,True],
+        [1,29,1,1,0.4,2,True],
     ]
 
     return prepare_info(layers)

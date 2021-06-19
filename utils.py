@@ -111,6 +111,7 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,fine
 
             discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
             asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths) # Predictor network
+            # print(asr_out)
         else:
             # Forward pass                  
             x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
