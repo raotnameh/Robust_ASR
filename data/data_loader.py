@@ -160,6 +160,7 @@ class SpectrogramParser(AudioParser):
             with open(f"{self.metadata_reacreation_path+audio_path.split('/')[-1][:-4]}.pickle", 'wb') as handle:
                 pickle.dump(save_dict,handle)
         
+        
         return spect
 
     def parse_transcript(self, transcript_path):
