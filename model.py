@@ -373,7 +373,6 @@ class Discriminator(nn.Module):
 
         self.disc.append(disc_last(info,classes,name='disc'))
 
-        
     def forward(self, x, lengths):
         for i in range(len(self.disc)):
             x, lengths = self.disc[i](x, lengths,)
