@@ -342,7 +342,7 @@ class disc_last(nn.Module):
 
         self.disc_last = nn.Sequential(
                         OrderedDict([
-                            (f'dropout_{name}', nn.Dropout(p=0.2)),
+                            (f'dropout_{name}', nn.Dropout(p=0.5)),
                             (f"flatten_{name}", nn.Flatten()),
                             (f'linear_{name}',torch.nn.Linear(info[-1]['out_channels']*32, classes)),
                         ])

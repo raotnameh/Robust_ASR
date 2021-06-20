@@ -83,7 +83,7 @@ def weights_(args, accent_dict):
         else: print(f"error in weighted loss")
     return torch.sum(disc_loss_weights) / disc_loss_weights
 
-def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,finetune=False,eps=0.0000000001):
+def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,finetune=False,mtl=False,eps=0.0000000001):
     [i[0].eval() for i in models.values()]
     total_cer, total_wer, num_tokens, num_chars = eps, eps, eps, eps
     conf_mat = np.ones((len(accent), len(accent)))*eps # ground-truth: dim-0; predicted-truth: dim-1;
@@ -104,7 +104,7 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,fine
             # Forward pass
             x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
             z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
-            if finetune: z_ = z
+            if finetune or mtl: z_ = z
             else: 
                 m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
                 z_ = z * m # Forget Operation
@@ -278,7 +278,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
                     'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
 
             # saving
-            if len(finetune_acc) == 1 or max(finetune_acc) < num/length *100:
+            if (len(finetune_acc) == 1 or max(finetune_acc) < num/length *100) and epoch >= 50:
                 print("Updating the final model!")
                 save = {}
                 for s_ in models.keys(): 
