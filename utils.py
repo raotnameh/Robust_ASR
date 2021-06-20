@@ -278,17 +278,16 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
                     'Discriminator F1 (micro) {f1: .3f}\t'.format(epoch + 1, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
 
             # saving
-            if (len(finetune_acc) == 1 or max(finetune_acc) < num/length *100) and epoch >= 50:
-                print("Updating the final model!")
-                save = {}
-                for s_ in models.keys(): 
-                    save[s_] = []
-                    save[s_].append(models[s_][0]) 
-                    save[s_].append(models[s_][1]) 
-                    save[s_].append(models[s_][2].state_dict()) 
-                package['models'] = save
-                torch.save(package, os.path.join(save_folder, f"ckpt_final.pth"))
-                del save
+            print("Updating the final model!")
+            save = {}
+            for s_ in models.keys(): 
+                save[s_] = []
+                save[s_].append(models[s_][0]) 
+                save[s_].append(models[s_][1]) 
+                save[s_].append(models[s_][2].state_dict()) 
+            package['models'] = save
+            torch.save(package, os.path.join(save_folder, f"ckpt_final_{epoch}.pth"))
+            del save
 
             finetune_acc.append(num/length *100)    
             if epoch >= finetune_epoch:
