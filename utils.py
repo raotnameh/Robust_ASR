@@ -177,10 +177,10 @@ def Normalize(input):
     Normalize the input such that it only varies in the direction and not the magnitude
     '''
 
-def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder,finetune_epoch=200):
+def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder):
 
     if hvd.rank() == 0:
-        finetune_acc = [0.0]
+        
         if args.warmup: package = torch.load(args.warmup, map_location=(f"cuda:0" if args.cuda else "cpu"))
         else: package = torch.load(args.continue_from, map_location=(f"cuda:0" if args.cuda else "cpu"))
 
@@ -288,10 +288,6 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
             package['models'] = save
             torch.save(package, os.path.join(save_folder, f"ckpt_final_{epoch}.pth"))
             del save
-
-            finetune_acc.append(num/length *100)    
-            if epoch >= finetune_epoch:
-                if finetune_acc[-10] >= finetune_acc[-1]: break
                         
         # anneal lr
         dummy_lr = None

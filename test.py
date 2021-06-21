@@ -141,7 +141,7 @@ def evaluate(test_loader, accent_dict, device, model_components, target_decoder,
               'Discriminator F1 (micro) {f1: .3f}\t'.format(acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
     
     print('Average WER {wer:.3f}\t'
-          'Average CER {cer:.3f}\t'.format(wer=wer, cer=cer))
+          'Average CER {cer:.3f}\t'.format(wer=wer*100, cer=cer*100))
 
     # saving
     if args.save_representation:

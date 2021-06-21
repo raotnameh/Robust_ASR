@@ -37,8 +37,8 @@ if args.lm_path is None:
 device = torch.device("cpu")
 labels = load_model_components(device, args, test=False)
 print(f"--{labels}---")
-labels = [' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
-          'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', "'", '_']
+# labels = [' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
+#           'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', "'", '_']
 # labels = [
 #     "_",
 #     " ", 
