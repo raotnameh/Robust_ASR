@@ -117,8 +117,8 @@ if __name__ == '__main__':
 
     # Lr scaler for multi gpu training
     lr_scaler = hvd.size()
-    args.lr = args.lr * lr_scaler#**0.5
-    if args.lr > 0.0025: args.lr = 0.0025
+    args.lr = args.lr * lr_scaler
+    if args.lr > 0.025: args.lr = 0.025
     # Set seeds for determinism
     torch.manual_seed(args.seed)
     if args.cuda: torch.cuda.manual_seed_all(args.seed)
@@ -556,7 +556,7 @@ if __name__ == '__main__':
         for i in models:
             for g in models[i][-1].param_groups:
                 if dummy_lr is None: dummy_lr = g['lr']
-                if g['lr'] >= 1e-6:
+                if g['lr'] >= 1e-5:
                     g['lr'] = g['lr'] * args.learning_anneal
             print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
             dummy_lr = None
@@ -644,3 +644,8 @@ if __name__ == '__main__':
 #                 [h_[0].train() for h_ in models.values()] # putting all the models in training state
 
 
+
+
+
+
+python test.py --test-manifest csvs/accent_cv/test/test4.csv --model-path /home/hemant/updated_v2/save/modified_fnet/enus/asr/models/ckpt_final.pth --gpu-rank 4 --cuda  --batch-size 48 --lm-path lm/train7.binary --decoder beam --num-workers 48 --beam-width 512 --alpha 1.75 --beta 4.714 && python test.py --test-manifest csvs/accent_cv/test/testIN.csv --model-path /home/hemant/updated_v2/save/modified_fnet/enus/asr/models/ckpt_final.pth --gpu-rank 4 --cuda  --batch-size 48 --lm-path lm/train7.binary --decoder beam --num-workers 48 --beam-width 512 --alpha 1.75 --beta 4.714 && python test.py --test-manifest csvs/accent_cv/test/testNZ.csv --model-path /home/hemant/updated_v2/save/modified_fnet/enus/asr/models/ckpt_final.pth --gpu-rank 4 --cuda  --batch-size 48 --lm-path lm/train7.binary --decoder beam --num-workers 48 --beam-width 512 --alpha 1.75 --beta 4.714 && python test.py --test-manifest csvs/accent_cv/dev/dev4_sorted.csv --model-path /home/hemant/updated_v2/save/modified_fnet/enus/asr/models/ckpt_final.pth --gpu-rank 4 --cuda  --batch-size 48 --lm-path lm/train7.binary --decoder beam --num-workers 48 --beam-width 512 --alpha 1.75 --beta 4.714
