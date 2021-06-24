@@ -246,7 +246,7 @@ class Forget(nn.Module):
         
         self.layers = nn.ModuleList()
         for i in range(len(info)):
-            # if kernel_size=info[i]['kernel_size']
+            
             self.layers.append(
                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
                     stride=info[i]['stride'], in_channels=in_channels,
@@ -260,9 +260,10 @@ class Forget(nn.Module):
         x = torch.mean(x,-1,keepdim=True)
         for i in range(len(self.layers)):
             x, lengths = self.layers[i](x, lengths,)
-        x = x.tile(1,1,old)
-        
-        return F.sigmoid(x), lengths#F.relu6(x)/6.0, lengths#
+        x = F.sigmoid(x)
+        # x = F.relu6(x)/6 # induces sparsity.
+
+        return x.tile(1,1,old), lengths
 
 class Encoder(nn.Module):
     def __init__(self,in_channels,info):
