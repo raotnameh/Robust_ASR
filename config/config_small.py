@@ -28,7 +28,7 @@ def configE():
         [1,29,1,896,0.4,2,True],
         [1,1,1,1024,0.4,1,True],
     ]
-
+    
     return prepare_info(layers)
 
 def configD():
@@ -56,8 +56,10 @@ def configFN():
 
 def configDM():
     layers = [
+        [2,29,1,512,0.4,1,True],
+        [2,29,1,384,0.4,1,True],
         [1,29,2,512,0.4,1,True],
-        [1,29,1,4,0.4,2,True],
+        # [1,29,1,1,0.4,2,True],
     ]
 
     return prepare_info(layers)

@@ -65,7 +65,8 @@ parser.add_argument('--early-val', default=10e-10, type=int,
                     help='Doing an early validation step')                    
 parser.add_argument('--warmup', default=None, help='start-from from checkpoint model')
 parser.add_argument('--use-decoder', action='store_true', help='To use decoder or no')
-
+parser.add_argument('--test-disc', dest='test_disc', action='store_true',
+                    help='Test the discriminator from checkpoint ')
 # Model arguements
 parser.add_argument('--update-rule', default=2, type=int,
                     help='train the discriminator k times')
@@ -648,4 +649,3 @@ if __name__ == '__main__':
 
 
 
-python test.py --test-manifest csvs/accent_cv/test/test4.csv --model-path /home/hemant/updated_v2/save/modified_fnet/enus/asr/models/ckpt_final.pth --gpu-rank 4 --cuda  --batch-size 48 --lm-path lm/train7.binary --decoder beam --num-workers 48 --beam-width 512 --alpha 1.75 --beta 4.714 && python test.py --test-manifest csvs/accent_cv/test/testIN.csv --model-path /home/hemant/updated_v2/save/modified_fnet/enus/asr/models/ckpt_final.pth --gpu-rank 4 --cuda  --batch-size 48 --lm-path lm/train7.binary --decoder beam --num-workers 48 --beam-width 512 --alpha 1.75 --beta 4.714 && python test.py --test-manifest csvs/accent_cv/test/testNZ.csv --model-path /home/hemant/updated_v2/save/modified_fnet/enus/asr/models/ckpt_final.pth --gpu-rank 4 --cuda  --batch-size 48 --lm-path lm/train7.binary --decoder beam --num-workers 48 --beam-width 512 --alpha 1.75 --beta 4.714 && python test.py --test-manifest csvs/accent_cv/dev/dev4_sorted.csv --model-path /home/hemant/updated_v2/save/modified_fnet/enus/asr/models/ckpt_final.pth --gpu-rank 4 --cuda  --batch-size 48 --lm-path lm/train7.binary --decoder beam --num-workers 48 --beam-width 512 --alpha 1.75 --beta 4.714

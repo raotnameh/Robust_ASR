@@ -240,29 +240,6 @@ class Pre(nn.Module):
             x, lengths = self.layers[i](x, lengths,)    
         return x, lengths
 
-# class Forget(nn.Module):
-#     def __init__(self,in_channels,info):
-#         super(Forget, self).__init__()
-        
-#         self.layers = nn.ModuleList()
-#         for i in range(len(info)):
-#             # if kernel_size=info[i]['kernel_size']
-#             self.layers.append(
-#                 block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
-#                     stride=info[i]['stride'], in_channels=in_channels,
-#                     out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
-#                     groups=in_channels)
-#             )
-#             in_channels = info[i]['out_channels']
-#         # self.last = nn.BatchNorm1d(in_channels)
-        
-#     def forward(self, x, lengths):
-#         for i in range(len(self.layers)):
-#             x, lengths = self.layers[i](x, lengths,)
-#         # x = self.last(x)
-#         return F.relu6(x)/6, lengths 
-
-
 class Forget(nn.Module):
     def __init__(self,in_channels,info):
         super(Forget, self).__init__()
@@ -277,7 +254,6 @@ class Forget(nn.Module):
                     )#groups=in_channels)
             )
             in_channels = info[i]['out_channels']
-        # self.last = nn.BatchNorm1d(in_channels)
         
     def forward(self, x, lengths):
         old = x.shape[-1]
@@ -285,8 +261,8 @@ class Forget(nn.Module):
         for i in range(len(self.layers)):
             x, lengths = self.layers[i](x, lengths,)
         x = x.tile(1,1,old)
-        # x = self.last(x)
-        return F.relu6(x)/6, lengths
+        
+        return F.sigmoid(x), lengths
 
 class Encoder(nn.Module):
     def __init__(self,in_channels,info):
@@ -329,7 +305,6 @@ class Predictor(nn.Module):
             x, lengths = self.layers[i](x, lengths)
         
         return x.permute(0,2,1), lengths # batch_size, seq_length,classes
-
 
 class disc_last(nn.Module):
     def __init__(self,info,classes,name='disc'):

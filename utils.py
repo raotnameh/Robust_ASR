@@ -203,7 +203,7 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
                 'Discriminator precision (micro) {pre: .3f}\t'
                 'Discriminator recall (micro) {rec: .3f}\t'
                 'Discriminator F1 (micro) {f1: .3f}\t'.format(0, wer=wer, cer=cer, acc_ = num/length *100 , acc=micro_accuracy, pre=weighted_precision, rec=weighted_recall, f1=weighted_f1))
-
+    if args.test_disc: exit()
     for epoch in range(args.epochs):
         
         [i[0].train() for i in models.values()] # putting all the models in training state
