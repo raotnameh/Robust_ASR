@@ -262,7 +262,7 @@ class Forget(nn.Module):
             x, lengths = self.layers[i](x, lengths,)
         x = x.tile(1,1,old)
         
-        return F.sigmoid(x), lengths
+        return F.relu6(x)/6.0, lengths#F.sigmoid(x), lengths
 
 class Encoder(nn.Module):
     def __init__(self,in_channels,info):

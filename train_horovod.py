@@ -191,7 +191,7 @@ if __name__ == '__main__':
             a = ""
             version_ = args.version
             for i in models:
-                if i == "forget_net": models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=10*args.lr,weight_decay=1e-4,amsgrad=True)    
+                if i == "forget_net": models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=100*args.lr,weight_decay=1e-4,amsgrad=True)    
                 else: models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         # print(best_cer, best_wer, audio_conf,start_iter)
         print("loaded models succesfully")
@@ -565,7 +565,6 @@ if __name__ == '__main__':
         if not args.no_shuffle:
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
-
 
         if hvd.rank() == 0:
             with torch.no_grad():
