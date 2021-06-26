@@ -117,7 +117,7 @@ class block_B(nn.Module):
 class block_Deco(nn.Module):
     def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2, nonlinear=2, batch_norm = True):
         super(block_Deco, self).__init__()
-
+        
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = ((kernel_size) // 2) * dilation

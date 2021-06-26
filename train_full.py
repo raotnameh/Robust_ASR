@@ -191,7 +191,7 @@ if __name__ == '__main__':
             a = ""
             version_ = args.version
             for i in models:
-                if i == "forget_net": models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=100*args.lr,weight_decay=1e-4,amsgrad=True)    
+                if i in ["forget_net", 'discriminator'] : models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=100*args.lr,weight_decay=1e-4,amsgrad=True)    
                 else: models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
         # print(best_cer, best_wer, audio_conf,start_iter)
         print("loaded models succesfully")
@@ -331,6 +331,17 @@ if __name__ == '__main__':
         if gamma <= 1.0: gamma = gamma * args.hyper_rate
               
         if hvd.rank() == 0 : print(alpha,beta,gamma)
+
+         # anneal lr
+        dummy_lr = None
+        for i in models:
+            for g in models[i][-1].param_groups:
+                if dummy_lr is None: dummy_lr = g['lr']
+                if g['lr'] >= 1e-6:
+                    g['lr'] = g['lr'] * args.learning_anneal
+            print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
+            dummy_lr = None
+
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
                 break
@@ -551,16 +562,6 @@ if __name__ == '__main__':
             print('Training Summary Epoch: [{0}]\t'
               'Time taken (s): {1}\t'
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
-        
-        # anneal lr
-        dummy_lr = None
-        for i in models:
-            for g in models[i][-1].param_groups:
-                if dummy_lr is None: dummy_lr = g['lr']
-                if g['lr'] >= 1e-5:
-                    g['lr'] = g['lr'] * args.learning_anneal
-            print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
-            dummy_lr = None
         
         if not args.no_shuffle:
             print("Shuffling batches...")

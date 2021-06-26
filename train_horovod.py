@@ -480,7 +480,6 @@ if __name__ == '__main__':
 
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
             p_counter += 1
-            
 
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
