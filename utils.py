@@ -303,3 +303,6 @@ def finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler
         if not args.no_shuffle:
             print("Shuffling batches...")
             disc_train_sampler.shuffle(epoch)
+
+
+

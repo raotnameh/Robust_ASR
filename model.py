@@ -260,9 +260,9 @@ class Forget(nn.Module):
         x = torch.mean(x,-1,keepdim=True)
         for i in range(len(self.layers)):
             x, lengths = self.layers[i](x, lengths,)
-        x = F.sigmoid(x)
-        # x = F.relu6(x)/6 # induces sparsity.
-
+        # x = F.sigmoid(x)
+        x = F.relu6(x)/6 # induces sparsity.
+    
         return x.tile(1,1,old), lengths
 
 class Encoder(nn.Module):
