@@ -235,19 +235,6 @@ if __name__ == '__main__':
             asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             criterion = nn.CTCLoss(reduction='none')#CTCLoss()
             models['predictor'] = [asr, criterion, asr_optimizer]
-        elif args.warmup and not args.train_asr:
-            package = torch.load(args.warmup, map_location=(f"cuda" if args.cuda else "cpu"))
-            models = package['models']
-            if not args.use_decoder:
-                try: 
-                    print("Deleting the decoder")
-                    del models['decoder']
-                except: print("Did not find the decoder") 
-            dummy = {i:models[i][-1] for i in models}
-            for i in models:
-                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=package['lr'],weight_decay=1e-4,amsgrad=True)
-                models[i][-1].load_state_dict(dummy[i])
-            del dummy
         
         if not args.train_asr:
             # Discriminator
@@ -348,7 +335,6 @@ if __name__ == '__main__':
                     package = {'models': save , 'start_epoch': epoch , 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                     torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
                     del save
-            
 
             if i % args.early_val+1 == args.early_val and args.early_val < len(train_sampler):
                 if hvd.rank() == 0 :
@@ -373,7 +359,7 @@ if __name__ == '__main__':
                     
                 [i_[0].train() for i_ in models.values()] # putting all the models in training state
             
-
+            
             accents = torch.tensor(accents).to(device)
             
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
