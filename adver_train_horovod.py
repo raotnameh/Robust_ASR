@@ -104,7 +104,8 @@ parser.add_argument('--fp16', action='store_true',
 class GradientReversalLayer(torch.autograd.Function):
 	"""
 	Implement the gradient reversal layer for the convenience of domain adaptation neural network.
-	The forward part is the identity function while the backward part is the negative function."""
+	The forward part is the identity function while the backward part is the negative function.
+    """
 	@staticmethod
 	def forward(self, inputs):
 		return inputs
@@ -112,7 +113,7 @@ class GradientReversalLayer(torch.autograd.Function):
 	def backward(self, grad_output):
 		#pdb.set_trace()
 		grad_input = grad_output.clone()
-		grad_input = -0.5 * grad_input
+		grad_input = -1 * grad_input
 		return grad_input
 
 def grad_reverse(x):
@@ -493,7 +494,6 @@ if __name__ == '__main__':
 
             with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
                 # Forward pass
-                # with torch.no_grad():
                 x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                 z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
                 m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network

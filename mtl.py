@@ -160,7 +160,7 @@ if __name__ == '__main__':
         audio_conf['noise_levels'] = (args.noise_min, args.noise_max)
     
         if not args.train_asr: # if adversarial training.
-            assert 'discrimator' and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
+            assert 'discriminator'  in models.keys(), "discriminator not found in checkpoint loaded"
         else: 
             try: 
                 print("Deleting the forget_net and discriminator")
