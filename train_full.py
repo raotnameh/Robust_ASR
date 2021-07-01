@@ -261,7 +261,7 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 1.0: beta = beta * args.hyper_rate
+        if beta <= 0.1: beta = beta * args.hyper_rate
         if gamma <= 1.0: gamma = gamma * args.hyper_rate
               
         if hvd.rank() == 0 : print(alpha,beta,gamma)
@@ -297,7 +297,6 @@ if __name__ == '__main__':
                     package = {'models': save , 'start_epoch': epoch , 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                     torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
                     del save
-            
 
             if i % args.early_val+1 == args.early_val and args.early_val < len(train_sampler):
                 if hvd.rank() == 0 :
@@ -333,7 +332,8 @@ if __name__ == '__main__':
                     asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
                     # Loss         
                     asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
-                    asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
+                    # print(asr_out.shape, targets.shape, asr_out_sizes.shape, target_sizes.shape)
+                    asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
                     loss = asr_loss 
 
                 valid_loss, error = check_loss(loss, loss.item())
