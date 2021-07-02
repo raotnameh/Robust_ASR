@@ -161,7 +161,7 @@ if __name__ == '__main__':
     
         if not args.train_asr: # if adversarial training.
             assert 'discriminator'  in models.keys(), "discriminator not found in checkpoint loaded"
-        else: 
+        else:
             try: 
                 print("Deleting the forget_net and discriminator")
                 del models['forget_net']
