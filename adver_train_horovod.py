@@ -111,10 +111,7 @@ class GradientReversalLayer(torch.autograd.Function):
 		return inputs
 	@staticmethod
 	def backward(self, grad_output):
-		#pdb.set_trace()
-		grad_input = grad_output.clone()
-		grad_input = -1 * grad_input
-		return grad_input
+        return -1 * grad_output
 
 def grad_reverse(x):
 	return GradientReversalLayer.apply(x)
@@ -395,100 +392,9 @@ if __name__ == '__main__':
                     writer.add_scalar('Validation/Discriminator-F1', weighted_f1, epoch+1)
                     
                 [i_[0].train() for i_ in models.values()] # putting all the models in training state
-            if args.train_asr: # Only trainig the ASR component
-             
-                [models[m][-1].zero_grad() for m in models if m is not None] #making graidents zero
-                p_counter += 1
-                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):# fp16 training
-                    # Forward pass                    
-                    x_, updated_lengths = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
-                    z,updated_lengths = models['encoder'][0](x_, updated_lengths) # Encoder network
-                    if args.use_decoder: decoder_out, _ = models['decoder'][0](z,updated_lengths) # Decoder network
-                    asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
-                    # Loss         
-                    asr_out = asr_out.transpose(0, 1)  # TxNxHßßß
-                    asr_loss = torch.mean( models['predictor'][1](asr_out.log_softmax(2).contiguous(), targets.contiguous(), asr_out_sizes.contiguous(), target_sizes.contiguous()) )  # average the loss by minibatch
-                    if args.use_decoder: decoder_loss = models['decoder'][1].forward(inputs.squeeze(dim=1), decoder_out, input_sizes, device) 
-                
-                    if args.use_decoder: loss = asr_loss  + (decoder_loss * alpha)
-                    else: loss = asr_loss 
-
-                valid_loss, error = check_loss(loss, loss.item())
-                if valid_loss:
-                    scaler.scale(loss).backward()
-                    for i_ in models.keys():
-                        models[i_][-1].synchronize()
-                        with models[i_][-1].skip_synchronize():
-                            scaler.step(models[i_][-1])
-                    scaler.update()
-                    p_loss = asr_loss.item()
-                    if args.use_decoder: d_loss = decoder_loss.item() 
-                    else: d_loss = 0
-                else: 
-                    print(error)
-                    print("Skipping grad update")
-                    p_loss, d_loss = 0.0, 0.0
             
-                d_avg_loss += d_loss
-                p_avg_loss += p_loss
-                if hvd.rank() == 0:
-                    # Logging to tensorboard.
-                    writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
-                    writer.add_scalar('Train/Decodder-Avergae-Loss-Cur-Epoch', d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
-                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)}/{round(d_avg_loss/p_counter,4)})") 
-                continue
-            
-            if args.num_epochs > epoch: update_rule = 1
-            else: update_rule = args.update_rule
-            for k in range(int(update_rule)): #updating the discriminator only  
-                
-                d_counter += 1
-                [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
-                # Data loading
-                try: inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
-                except:
-                    disc_train_sampler.shuffle(start_epoch)
-                    disc_ = iter(disc_train_loader)
-                    inputs_, targets_, input_percentages_, target_sizes_, accents_ = next(disc_)
-
-                input_sizes_ = input_percentages_.mul_(int(inputs_.size(3))).int()
-                inputs_ = inputs_.to(device)
-                accents_ = torch.tensor(accents_).to(device)
-                with torch.cuda.amp.autocast(enabled=True if args.fp16 else False):
-                    # Forward pass
-                    x_, updated_lengths_ = models['preprocessing'][0](inputs_.squeeze(dim=1),input_sizes_.type(torch.LongTensor).to(device))
-                    z, updated_lengths = models['encoder'][0](x_,updated_lengths_) # Encoder network
-                    m, updated_lengths = models['forget_net'][0](z,updated_lengths_) # Forget network
-                    z_ = z * m # Forget Operation
-                    discriminator_out = models['discriminator'][0](z_, updated_lengths) # Discriminator network
-                    # Loss             
-                    discriminator_loss = models['discriminator'][1](discriminator_out, accents_)
-
-                d_loss = discriminator_loss.item()
-                valid_loss, error = check_loss(discriminator_loss, d_loss)
-                if valid_loss:
-                    scaler.scale(discriminator_loss).backward()
-                    for i_ in models.keys():
-                        models[i_][-1].synchronize()
-                    with models['discriminator'][-1].skip_synchronize():
-                        scaler.step(models['discriminator'][-1])
-                    scaler.update()
-                else: 
-                    print(error)
-                    print("Skipping grad update")
-                    d_loss = 0.0
-                
-                d_avg_loss += d_loss
-                if hvd.rank() == 0:
-                    if not args.silent: print(f"Epoch: [{epoch+1}][{i+1,k+1}/{len(train_sampler)}]\t\t\t\t\t Discriminator Loss: {round(d_loss,4)} ({round(d_avg_loss/d_counter,4)})")
-
-            if hvd.rank() == 0:
-                # Logging to tensorboard.
-                writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', d_avg_loss/d_counter, len(train_sampler)*epoch+i+1) # Discriminator's training loss in the current main - iteration.
-
-
             accents = torch.tensor(accents).to(device)
-
+            
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
             p_counter += 1
 
@@ -510,12 +416,6 @@ if __name__ == '__main__':
                 
             loss = asr_loss + discriminator_loss 
 
-            scaler.scale(discriminator_loss).backward(retain_graph=True)
-            for i_ in models.keys():
-                models[i_][-1].synchronize()
-            models['encoder'][-1].zero_grad()
-            models['preprocessing'][-1].zero_grad()
-
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
             if valid_loss:
@@ -531,12 +431,13 @@ if __name__ == '__main__':
             else: 
                 print(error)
                 print("Skipping grad update")
-                p_loss = 0.0
                 p_avg_loss += 0.0
                 p_d_avg_loss += 0.0
             
             if hvd.rank() == 0:
                  # Logging to tensorboard and train.log.
+                writer.add_histogram("Train/forget-net",m[0,:,0], len(train_sampler)*epoch+i+1,bins=9)
+                writer.add_scalar('Train/mask-regularizer-loss', mask_regulariser_loss, len(train_sampler)*epoch+i+1)
                 writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                 writer.add_scalar('Train/Dummy-Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
                 if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,8)} ({round(p_d_avg_loss/p_counter,8)})") 

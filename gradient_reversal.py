@@ -110,10 +110,9 @@ class GradientReversalLayer(torch.autograd.Function):
 		return inputs
 	@staticmethod
 	def backward(self, grad_output):
-		#pdb.set_trace()
-		grad_input = grad_output.clone()
-		grad_input = -1 * grad_input
-		return grad_input
+		# grad_input = grad_output.clone()
+		# grad_input = -1 * grad_input
+		return -1 * grad_output #grad_input
 
 def grad_reverse(x):
 	return GradientReversalLayer.apply(x)
