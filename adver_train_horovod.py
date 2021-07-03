@@ -107,11 +107,11 @@ class GradientReversalLayer(torch.autograd.Function):
 	The forward part is the identity function while the backward part is the negative function.
     """
 	@staticmethod
-	def forward(self, inputs):
-		return inputs
+	def forward(self, inputs): return inputs
+
 	@staticmethod
-	def backward(self, grad_output):
-        return -1 * grad_output
+	def backward(self, grad_output): return -1 * grad_output
+
 
 def grad_reverse(x):
 	return GradientReversalLayer.apply(x)
@@ -409,9 +409,10 @@ if __name__ == '__main__':
                 # Loss                
                 discriminator_loss = models['discriminator'][1](discriminator_out, accents) * beta
                 p_d_loss = discriminator_loss.item()    
-        
-                asr_out = asr_out.transpose(0, 1)  # TxNxH
+
+                # mask_regulariser_loss =  (m * (1-m)).mean() * gamma # m[0,:,0].mean() * gamma
                 
+                asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
                 
             loss = asr_loss + discriminator_loss 
@@ -437,7 +438,6 @@ if __name__ == '__main__':
             if hvd.rank() == 0:
                  # Logging to tensorboard and train.log.
                 writer.add_histogram("Train/forget-net",m[0,:,0], len(train_sampler)*epoch+i+1,bins=9)
-                writer.add_scalar('Train/mask-regularizer-loss', mask_regulariser_loss, len(train_sampler)*epoch+i+1)
                 writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                 writer.add_scalar('Train/Dummy-Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
                 if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,8)} ({round(p_d_avg_loss/p_counter,8)})") 
