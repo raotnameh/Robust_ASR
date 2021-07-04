@@ -420,14 +420,18 @@ if __name__ == '__main__':
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
                
-            loss = asr_loss # + discriminator_loss 
-            
-            scaler.scale(discriminator_loss).backward(retain_graph=True)
-            for i_ in models.keys():
-                models[i_][-1].synchronize()
-            models['encoder'][-1].zero_grad()
-            models['preprocessing'][-1].zero_grad()
 
+            if args.num_epochs > epoch:
+                loss = asr_loss # + discriminator_loss 
+
+                scaler.scale(discriminator_loss).backward(retain_graph=True)
+                for i_ in models.keys():
+                    models[i_][-1].synchronize()
+                models['encoder'][-1].zero_grad()
+                models['preprocessing'][-1].zero_grad()
+
+            else: loss = asr_loss + discriminator_loss 
+            
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
             if valid_loss:
@@ -446,7 +450,7 @@ if __name__ == '__main__':
                 p_d_avg_loss += 0.0
             
             if hvd.rank() == 0:
-                 # Logging to tensorboard and train.log.
+                # Logging to tensorboard and train.log.
                 writer.add_scalar('Train/mask-regularizer-loss', mask_regulariser_loss, len(train_sampler)*epoch+i+1)
                 writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                 writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
@@ -457,7 +461,7 @@ if __name__ == '__main__':
         dummy_mask /= p_counter
         
         if hvd.rank() == 0: 
-            writer.add_histogram("Train/forget-net",dummy_mask/p_counter + 1, epoch )
+            writer.add_histogram("Train/forget-net",dummy_mask, epoch+1, bins=10)
 
         epoch_time = time.time() - start_epoch_time
         start_iter = 0

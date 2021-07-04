@@ -262,7 +262,7 @@ class Forget(nn.Module):
                             (f'Linear_1{name}',nn.Linear(in_channels, int(in_channels/scale), bias=False)),
                             (f'batchnorm_{name}', nn.BatchNorm1d(1)),
                             (f'relu_{name}', nn.ReLU()),
-                            (f'dropout_{name}', nn.Dropout(p=0.5)),
+                            (f'dropout_{name}', nn.Dropout(p=0.2)),
                             (f"Linear_2{name}",nn.Linear(int(in_channels/scale), in_channels, bias=False)),
                             (f"Activation_2{name}",nn.Sigmoid()), 
                         ])
