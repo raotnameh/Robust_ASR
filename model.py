@@ -245,25 +245,35 @@ class Forget(nn.Module):
         super(Forget, self).__init__()
         
         self.layers = nn.ModuleList()
-        for i in range(len(info)):
+        # for i in range(len(info)):
             
-            self.layers.append(
-                block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
-                    stride=info[i]['stride'], in_channels=in_channels,
-                    out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
-                    )#groups=in_channels)
-            )
-            in_channels = info[i]['out_channels']
+        #     self.layers.append(
+        #         block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
+        #             stride=info[i]['stride'], in_channels=in_channels,
+        #             out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
+        #             )#groups=in_channels)
+        #     )
+        #     in_channels = info[i]['out_channels']
+
+        name = "forget_net"
+        scale = 8
+        self.layers = nn.Sequential(
+                        OrderedDict([
+                            (f'Linear_1{name}',nn.Linear(in_channels, int(in_channels/scale), bias=False)),
+                            (f'batchnorm_{name}', nn.BatchNorm1d(1)),
+                            (f'relu_{name}', nn.ReLU()),
+                            (f'dropout_{name}', nn.Dropout(p=0.5)),
+                            (f"Linear_2{name}",nn.Linear(int(in_channels/scale), in_channels, bias=False)),
+                            (f"Activation_2{name}",nn.Sigmoid()), 
+                        ])
+                    )
         
     def forward(self, x, lengths):
         old = x.shape[-1]
-        x = torch.mean(x,-1,keepdim=True)
-        for i in range(len(self.layers)):
-            x, lengths = self.layers[i](x, lengths,)
-        # x = F.sigmoid(x)
-        x = F.relu6(x)/6 # induces sparsity.
-    
-        return x.tile(1,1,old), lengths
+        x = torch.mean(x,-1,keepdim=True).permute(0,2,1)
+        x = self.layers(x)
+        x = x.permute(0,2,1).tile(1,1,old)
+        return x, lengths
 
 class Encoder(nn.Module):
     def __init__(self,in_channels,info):
@@ -346,7 +356,7 @@ class Discriminator(nn.Module):
                     )
             )
             in_channels = info[i]['out_channels']
-
+    
         self.disc.append(disc_last(info,classes,name='disc'))
 
     def forward(self, x, lengths):

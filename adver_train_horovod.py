@@ -345,8 +345,10 @@ if __name__ == '__main__':
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
         if beta <= 0.1: beta = beta * args.hyper_rate
         if gamma <= 1.0: gamma = gamma * args.hyper_rate
-              
-        if hvd.rank() == 0 : print(alpha,beta,gamma)
+
+        dummy_mask = torch.zeros(configE()[-1]['out_channels'])
+        if hvd.rank() == 0 : 
+            print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
                 break
@@ -403,19 +405,28 @@ if __name__ == '__main__':
                 x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                 z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
                 m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
+                # print(m[:,:,0].view(-1).cpu().detach().shape)
+                dummy_mask += m[0,:,0].view(-1).cpu().detach()
+                # exit()
                 z_ = z * m # Forget Operation
                 discriminator_out = models['discriminator'][0](grad_reverse(z_), updated_lengths_) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
                 # Loss                
                 discriminator_loss = models['discriminator'][1](discriminator_out, accents) * beta
                 p_d_loss = discriminator_loss.item()    
-
+                
                 mask_regulariser_loss =  m.mean() # (m * (1-m)).mean() * gamma # m[0,:,0].mean() * gamma
                 
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                
-            loss = asr_loss + discriminator_loss 
+               
+            loss = asr_loss # + discriminator_loss 
+            
+            scaler.scale(discriminator_loss).backward(retain_graph=True)
+            for i_ in models.keys():
+                models[i_][-1].synchronize()
+            models['encoder'][-1].zero_grad()
+            models['preprocessing'][-1].zero_grad()
 
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
@@ -423,9 +434,8 @@ if __name__ == '__main__':
                 scaler.scale(loss).backward()
                 for i_ in models.keys():
                     models[i_][-1].synchronize()
-                    if i_ != 'discriminator':
-                        with models[i_][-1].skip_synchronize():
-                            scaler.step(models[i_][-1])
+                    with models[i_][-1].skip_synchronize():
+                        scaler.step(models[i_][-1])
                 scaler.update()
                 p_avg_loss += asr_loss.item()
                 p_d_avg_loss += p_d_loss
@@ -437,14 +447,18 @@ if __name__ == '__main__':
             
             if hvd.rank() == 0:
                  # Logging to tensorboard and train.log.
-                writer.add_histogram("Train/forget-net",m[0,:,0], len(train_sampler)*epoch+i+1,bins=9)
                 writer.add_scalar('Train/mask-regularizer-loss', mask_regulariser_loss, len(train_sampler)*epoch+i+1)
                 writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                 writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
                 if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,8)} ({round(p_d_avg_loss/p_counter,8)})") 
-            
-        d_avg_loss /= d_counter
+        
+        d_avg_loss /= p_counter
         p_avg_loss /= p_counter
+        dummy_mask /= p_counter
+        
+        if hvd.rank() == 0: 
+            writer.add_histogram("Train/forget-net",dummy_mask/p_counter + 1, epoch )
+
         epoch_time = time.time() - start_epoch_time
         start_iter = 0
         if hvd.rank() == 0:
