@@ -13,7 +13,7 @@ import pandas as pd
 import horovod.torch as hvd
 from config.config_small import *
 # from config.config_jasper import *
-#from config.config_large import *
+# from config.config_large import *
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from data.data_loader import get_accents
@@ -68,7 +68,7 @@ parser.add_argument('--use-decoder', action='store_true', help='To use decoder o
 parser.add_argument('--test-disc', dest='test_disc', action='store_true',
                     help='Test the discriminator from checkpoint ')
 # Model arguements
-parser.add_argument('--update-rule', default=2, type=int,
+parser.add_argument('--update-rule', default=2, type=float,
                     help='train the discriminator k times')
 parser.add_argument('--train-asr', action='store_true',
                     help='training only the ASR')
@@ -104,17 +104,19 @@ parser.add_argument('--fp16', action='store_true',
 class GradientReversalLayer(torch.autograd.Function):
 	"""
 	Implement the gradient reversal layer for the convenience of domain adaptation neural network.
-	The forward part is the identity function while the backward part is the negative function.
-    """
+	The forward part is the identity function while the backward part is the negative function."""
 	@staticmethod
-	def forward(self, inputs): return inputs
-
+	def forward(self, inputs):
+		return inputs
 	@staticmethod
-	def backward(self, grad_output): return -1 * grad_output
-
+	def backward(self, grad_output):
+		# grad_input = grad_output.clone()
+		# grad_input = -1 * grad_input
+		return -1 * grad_output #grad_input
 
 def grad_reverse(x):
 	return GradientReversalLayer.apply(x)
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -270,7 +272,7 @@ if __name__ == '__main__':
             fnet = Forget(configE()[-1]['out_channels'],configFN())
             fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             models['forget_net'] = [fnet, None, fnet_optimizer]
-            # Discriminator
+            # Discriminato
             discriminator = Discriminator(configFN()[-1]['out_channels'],configDM(),classes=len(accent))
             discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             # Weighted loss depending on the class count 
@@ -343,8 +345,8 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 0.1: beta = beta * args.hyper_rate
-        if gamma <= 1.0: gamma = gamma * args.hyper_rate
+        if beta <= args.update_rule: beta = beta * args.hyper_rate
+        if gamma <= args.update_rule: gamma = gamma * args.hyper_rate
 
         dummy_mask = torch.zeros(configE()[-1]['out_channels'])
         if hvd.rank() == 0 : 
@@ -404,11 +406,11 @@ if __name__ == '__main__':
                 # Forward pass
                 x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                 z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
+                
                 m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
-                # print(m[:,:,0].view(-1).cpu().detach().shape)
                 dummy_mask += m[0,:,0].view(-1).cpu().detach()
-                # exit()
                 z_ = z * m # Forget Operation
+            
                 discriminator_out = models['discriminator'][0](grad_reverse(z_), updated_lengths_) # Discriminator network
                 asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
                 # Loss                
@@ -419,19 +421,15 @@ if __name__ == '__main__':
                 
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-               
+        
+            loss = asr_loss # + discriminator_loss 
 
-            if args.num_epochs > epoch:
-                loss = asr_loss # + discriminator_loss 
+            scaler.scale(discriminator_loss).backward(retain_graph=True)
+            for i_ in models.keys():
+                models[i_][-1].synchronize()
+            models['encoder'][-1].zero_grad()
+            models['preprocessing'][-1].zero_grad()
 
-                scaler.scale(discriminator_loss).backward(retain_graph=True)
-                for i_ in models.keys():
-                    models[i_][-1].synchronize()
-                models['encoder'][-1].zero_grad()
-                models['preprocessing'][-1].zero_grad()
-
-            else: loss = asr_loss + discriminator_loss 
-            
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
             if valid_loss:

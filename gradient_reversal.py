@@ -328,7 +328,7 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 0.1: beta = beta * args.hyper_rate
+        if beta <= 1.0: beta = beta * args.hyper_rate
         if gamma <= 1.0: gamma = gamma * args.hyper_rate
               
         if hvd.rank() == 0 : print(alpha,beta,gamma)

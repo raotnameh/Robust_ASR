@@ -244,25 +244,23 @@ class Forget(nn.Module):
     def __init__(self,in_channels,info):
         super(Forget, self).__init__()
         
-        self.layers = nn.ModuleList()
-        # for i in range(len(info)):
-            
-        #     self.layers.append(
-        #         block_B(info[i]['sub_blocks'], kernel_size=info[i]['kernel_size'], dilation=info[i]['dilation'],
-        #             stride=info[i]['stride'], in_channels=in_channels,
-        #             out_channels=info[i]['out_channels'], dropout=info[i]['dropout'],batch_norm=info[i]['batch_norm'],name='Forget',
-        #             )#groups=in_channels)
-        #     )
-        #     in_channels = info[i]['out_channels']
-
         name = "forget_net"
+        info = info[0]
         scale = 8
+        # self.padding = (info['kernel_size'] // 2) * info['dilation']
+        # self.conv = nn.Sequential(
+        #                 OrderedDict([
+        #                     (f'conv_{name}',nn.Conv1d(in_channels, info['out_channels'], kernel_size=info['kernel_size'],
+        #                      stride=info['stride'], padding=self.padding, dilation=info['dilation'], bias=False)),
+        #                     (f'batchnorm_{name}', nn.BatchNorm1d(info['out_channels'])),
+        #                     (f'relu_{name}', nn.ReLU()),
+        #                 ])
+        #             )
         self.layers = nn.Sequential(
                         OrderedDict([
                             (f'Linear_1{name}',nn.Linear(in_channels, int(in_channels/scale), bias=False)),
-                            (f'batchnorm_{name}', nn.BatchNorm1d(1)),
                             (f'relu_{name}', nn.ReLU()),
-                            (f'dropout_{name}', nn.Dropout(p=0.2)),
+                            (f'dropout_{name}',nn.Dropout(p=info['dropout'])),
                             (f"Linear_2{name}",nn.Linear(int(in_channels/scale), in_channels, bias=False)),
                             (f"Activation_2{name}",nn.Sigmoid()), 
                         ])
