@@ -65,3 +65,4 @@ def configDM():
     return prepare_info(layers)
 
 # f"python {file}.py --train-manifest {train_} --val-manifest {test_} --batch-size {batch_size} --epochs 500 --cuda --lr 0.0015 --checkpoint --gpu-rank {gpu_rank} --exp-name save/{save} --alpha 0.0001 --beta 0.2 --gamma 0.6 --fp16"
+
