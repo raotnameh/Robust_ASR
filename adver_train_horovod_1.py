@@ -13,7 +13,7 @@ import pandas as pd
 import horovod.torch as hvd
 from config.config_small import *
 # from config.config_jasper import *
-#from config.config_large import *
+# from config.config_large import *
 
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from data.data_loader import get_accents
@@ -253,12 +253,29 @@ if __name__ == '__main__':
             asr_optimizer = torch.optim.Adam(asr.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
             criterion = nn.CTCLoss(reduction='none')#CTCLoss()
             models['predictor'] = [asr, criterion, asr_optimizer]
+        elif args.warmup and not args.train_asr:
+            package = torch.load(args.warmup, map_location=(f"cuda" if args.cuda else "cpu"))
+            models = package['models']
+            if not args.use_decoder:
+                try: 
+                    print("Deleting the decoder")
+                    del models['decoder']
+                except: print("Did not find the decoder") 
+            dummy = {i:models[i][-1] for i in models}
+            for i in models:
+                models[i][-1] = torch.optim.Adam(models[i][0].parameters(), lr=package['lr'],weight_decay=1e-4,amsgrad=True)
+                models[i][-1].load_state_dict(dummy[i])
+            del dummy
         
         if not args.train_asr:
-            # Discriminator
+            # Forget Network
+            fnet = Forget(configE()[-1]['out_channels'],configFN())
+            fnet_optimizer = torch.optim.Adam(fnet.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
+            models['forget_net'] = [fnet, None, fnet_optimizer]
+            # Discriminato
             discriminator = Discriminator(configFN()[-1]['out_channels'],configDM(),classes=len(accent))
             discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=args.lr,weight_decay=1e-4,amsgrad=True)
-            # Weighted loss depending on the class count
+            # Weighted loss depending on the class count 
             disc_loss_weights = weights_(args, accent_dict).to(device)   
             dis_loss = nn.CrossEntropyLoss(weight=disc_loss_weights)
             models['discriminator'] = [discriminator, dis_loss, discriminator_optimizer]
@@ -330,8 +347,10 @@ if __name__ == '__main__':
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
         if beta <= args.update_rule: beta = beta * args.hyper_rate
         if gamma <= args.update_rule: gamma = gamma * args.hyper_rate
-              
-        if hvd.rank() == 0 : print(alpha,beta,gamma)
+
+        dummy_mask = torch.zeros(configE()[-1]['out_channels'])
+        if hvd.rank() == 0 : 
+            print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
             if i == len(train_sampler):
                 break
@@ -353,6 +372,7 @@ if __name__ == '__main__':
                     package = {'models': save , 'start_epoch': epoch , 'best_wer': best_wer, 'best_cer': best_cer, 'poor_cer_list': poor_cer_list, 'start_iter': i, 'accent_dict': accent_dict, 'version': version_, 'train.log': a, 'audio_conf': audio_conf, 'labels': labels, 'lr':args.lr * (args.learning_anneal**(epoch+1))}
                     torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}_{i+1}.pth"))
                     del save
+            
 
             if i % args.early_val+1 == args.early_val and args.early_val < len(train_sampler):
                 if hvd.rank() == 0 :
@@ -377,7 +397,6 @@ if __name__ == '__main__':
                     
                 [i_[0].train() for i_ in models.values()] # putting all the models in training state
             
-            
             accents = torch.tensor(accents).to(device)
             
             [m[-1].zero_grad() for m in models.values() if m is not None] #making graidents zero
@@ -388,16 +407,28 @@ if __name__ == '__main__':
                 x_, updated_lengths_ = models['preprocessing'][0](inputs.squeeze(dim=1),input_sizes.type(torch.LongTensor).to(device))
                 z, updated_lengths = models['encoder'][0](x_, updated_lengths_) # Encoder network
                 
-                discriminator_out = models['discriminator'][0](grad_reverse(z), updated_lengths) # Discriminator network
-                asr_out, asr_out_sizes = models['predictor'][0](z, updated_lengths) # Predictor network
+                m, updated_lengths_ = models['forget_net'][0](z,updated_lengths_) # Forget network
+                dummy_mask += m[0,:,0].view(-1).cpu().detach()
+                z_ = z * m # Forget Operation
+            
+                discriminator_out = models['discriminator'][0](grad_reverse(z_), updated_lengths_) # Discriminator network
+                asr_out, asr_out_sizes = models['predictor'][0](z_, updated_lengths_) # Predictor network
                 # Loss                
                 discriminator_loss = models['discriminator'][1](discriminator_out, accents) * beta
                 p_d_loss = discriminator_loss.item()    
-        
+                
+                mask_regulariser_loss =  m.mean() # (m * (1-m)).mean() * gamma # m[0,:,0].mean() * gamma
+                
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-                
-            loss = asr_loss + discriminator_loss 
+        
+            loss = asr_loss  + discriminator_loss #+ (m * (1-m)).mean() * gamma
+
+            # scaler.scale(discriminator_loss).backward(retain_graph=True)
+            # for i_ in models.keys():
+            #     models[i_][-1].synchronize()
+            # models['encoder'][-1].zero_grad()
+            # models['preprocessing'][-1].zero_grad()
 
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
@@ -417,13 +448,19 @@ if __name__ == '__main__':
                 p_d_avg_loss += 0.0
             
             if hvd.rank() == 0:
-                 # Logging to tensorboard and train.log.
+                # Logging to tensorboard and train.log.
+                writer.add_scalar('Train/mask-regularizer-loss', mask_regulariser_loss, len(train_sampler)*epoch+i+1)
                 writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                 writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
                 if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,8)} ({round(p_d_avg_loss/p_counter,8)})") 
-            
-        d_avg_loss /= d_counter
+        
+        d_avg_loss /= p_counter
         p_avg_loss /= p_counter
+        dummy_mask /= p_counter
+        
+        if hvd.rank() == 0: 
+            writer.add_histogram("Train/forget-net",dummy_mask, epoch+1, bins=10)
+
         epoch_time = time.time() - start_epoch_time
         start_iter = 0
         if hvd.rank() == 0:
@@ -447,7 +484,7 @@ if __name__ == '__main__':
 
         if hvd.rank() == 0:
             with torch.no_grad():
-                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,mtl=True,eps=0.0000000001)
+                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001)
             
             f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
             a += f"{epoch},{epoch_time},{wer},{cer},{num/length *100},{weighted_precision},{weighted_recall},{weighted_f1},{d_avg_loss},{p_avg_loss},{args.alpha},{args.beta},{args.gamma}\n"

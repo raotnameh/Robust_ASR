@@ -262,14 +262,14 @@ class Forget(nn.Module):
                             (f'relu_{name}', nn.ReLU()),
                             (f'dropout_{name}',nn.Dropout(p=info['dropout'])),
                             (f"Linear_2{name}",nn.Linear(int(in_channels/scale), in_channels, bias=False)),
-                            (f"Activation_2{name}",nn.Sigmoid()), 
+                            (f"Activation_2{name}",nn.ReLU6()), 
                         ])
                     )
         
     def forward(self, x, lengths):
         old = x.shape[-1]
         x = torch.mean(x,-1,keepdim=True).permute(0,2,1)
-        x = self.layers(x)
+        x = self.layers(x)/6
         x = x.permute(0,2,1).tile(1,1,old)
         return x, lengths
 
