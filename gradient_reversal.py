@@ -139,10 +139,10 @@ if __name__ == '__main__':
     args.lr = args.lr * lr_scaler
     if args.lr > 0.025: args.lr = 0.025
     # Set seeds for determinism
-    # torch.manual_seed(args.seed)
-    # if args.cuda: torch.cuda.manual_seed_all(args.seed)
-    # np.random.seed(args.seed)
-    # random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if args.cuda: torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
 
     # Gpu setting
     device = torch.device("cuda" if args.cuda else "cpu")
@@ -521,9 +521,6 @@ if __name__ == '__main__':
 #                                 'Average WER {wer:.3f}\t'
 #                                 'Average CER {cer:.3f}\t'.format(epoch + 1, wer=wer, cer=cer))
 #                 [h_[0].train() for h_ in models.values()] # putting all the models in training state
-
-
-
 
 
 
