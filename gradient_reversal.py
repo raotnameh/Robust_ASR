@@ -178,7 +178,7 @@ if __name__ == '__main__':
         audio_conf['noise_levels'] = (args.noise_min, args.noise_max)
     
         if not args.train_asr: # if adversarial training.
-            assert 'discrimator' and 'forget_net' in models.keys(), "forget_net and discriminator not found in checkpoint loaded"
+            assert 'discriminator' in models.keys(), "discriminator not found in checkpoint loaded"
         else: 
             try: 
                 print("Deleting the forget_net and discriminator")
@@ -329,6 +329,7 @@ if __name__ == '__main__':
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
         if beta <= args.update_rule: beta = beta * args.hyper_rate
+        # else: beta = args.beta
         if gamma <= args.update_rule: gamma = gamma * args.hyper_rate
               
         if hvd.rank() == 0 : print(alpha,beta,gamma)
@@ -405,6 +406,7 @@ if __name__ == '__main__':
                 scaler.scale(loss).backward()
                 for i_ in models.keys():
                     models[i_][-1].synchronize()
+                    # if i_ == "discriminator": continue
                     with models[i_][-1].skip_synchronize():
                         scaler.step(models[i_][-1])
                 scaler.update()
