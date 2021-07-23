@@ -423,13 +423,7 @@ if __name__ == '__main__':
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
         
             loss = asr_loss  + discriminator_loss #+ (m * (1-m)).mean() * gamma
-
-            # scaler.scale(discriminator_loss).backward(retain_graph=True)
-            # for i_ in models.keys():
-            #     models[i_][-1].synchronize()
-            # models['encoder'][-1].zero_grad()
-            # models['preprocessing'][-1].zero_grad()
-
+            
             p_loss = loss.item()
             valid_loss, error = check_loss(loss, p_loss)
             if valid_loss:
