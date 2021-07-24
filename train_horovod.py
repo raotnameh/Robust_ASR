@@ -121,10 +121,10 @@ if __name__ == '__main__':
     args.lr = args.lr * lr_scaler
     if args.lr > 0.025: args.lr = 0.025
     # Set seeds for determinism
-    # torch.manual_seed(args.seed)
-    # if args.cuda: torch.cuda.manual_seed_all(args.seed)
-    # np.random.seed(args.seed)
-    # random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if args.cuda: torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
 
     # Gpu setting
     device = torch.device("cuda" if args.cuda else "cpu")
@@ -542,18 +542,21 @@ if __name__ == '__main__':
         epoch_time = time.time() - start_epoch_time
         start_iter = 0
 
+        for i_ in models.keys():
+            models[i_][-1].synchronize()
+
         if hvd.rank() == 0:
             print('Training Summary Epoch: [{0}]\t'
               'Time taken (s): {1}\t'
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
 
         # anneal lr
-        if epoch >= 3 and (poor_cer_list[-1] >= min(poor_cer_list[:-1])):
+        if len(poor_cer_list) >= 10 and (poor_cer_list[-1] >= min(poor_cer_list[-5:-1])):
             # dummy_lr = None
             for i in models:
                 for g in models[i][-1].param_groups:
                     # if dummy_lr is None: dummy_lr = g['lr']
-                    if g['lr'] >= 1e-8:
+                    if g['lr'] >= 1e-6:
                         g['lr'] = g['lr'] * args.learning_anneal
                 # print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
                 # dummy_lr = None
@@ -562,8 +565,14 @@ if __name__ == '__main__':
             if hvd.rank() == 0: print("Shuffling batches...")
             train_sampler.shuffle(epoch)
 
+        for i_ in models.keys():
+            models[i_][-1].synchronize()
+
         with torch.no_grad():
             wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001)
+
+        for i_ in models.keys():
+            models[i_][-1].synchronize()
 
         if hvd.rank() == 0:
             
@@ -622,21 +631,19 @@ if __name__ == '__main__':
             best_cer = cer
 
         # Exiting criteria
-        if len(poor_cer_list) > 2:
+        if len(poor_cer_list) > 100:
             terminate_train = False 
-            if best_cer <= min(poor_cer_list[:-args.patience]):
-                print("Exiting training loop...")
-                terminate_train = True
+            try:
+                if best_cer <= min(poor_cer_list[:-args.patience]):
+                    print("Exiting training loop...")
+                    terminate_train = True
+            except: pass
             if terminate_train:
                 break
 
         d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
 
-        if True: #hvd.rank() == 0:
-            # print(poor_cer_list)
-            for i in models:
-                for g in models[i][-1].param_groups:
-                    pass
-                print(f"Learning rate of {i} is {g['lr']}")
+        if hvd.rank() == 0: print(f"Learning rate is {models['predictor'][-1].param_groups[0]['lr']}")
+                
         
     writer.close()
