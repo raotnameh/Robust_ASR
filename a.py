@@ -1,8 +1,8 @@
-a = "horovodrun -np 4 -H localhost:4 python gradient_reversal.py --train-manifest csvs/accent_cv/train/train7_sorted.csv --val-manifest csvs/accent_cv/dev/dev4_sorted.csv --batch-size 64  --num-workers 4 --epochs 500 --cuda --lr 0.0015  --gpu-rank 4,3,2,1, --exp-name save/enus/asr_gradient_reversal_0.5  --fp16 --hyper-rate 1.25  --beta 0.001 --gamma 0.000 --update-rule 0.5 --num-epochs 100  --patience 1000 --learning-anneal 0.99 --spec-augment && horovodrun -np 4 -H localhost:4 python gradient_reversal.py --train-manifest csvs/accent_cv/train/train7_sorted.csv --val-manifest csvs/accent_cv/dev/dev4_sorted.csv --batch-size 64  --num-workers 4 --epochs 500 --cuda --lr 0.0015  --gpu-rank 4,3,2,1, --exp-name save/enus/asr_gradient_reversal_0.25  --fp16 --hyper-rate 1.25  --beta 0.001 --gamma 0.000 --update-rule 0.25 --num-epochs 100  --patience 1000 --learning-anneal 0.99 --spec-augment && horovodrun -np 4 -H localhost:4 python gradient_reversal.py --train-manifest csvs/accent_cv/train/train7_sorted.csv --val-manifest csvs/accent_cv/dev/dev4_sorted.csv --batch-size 64  --num-workers 4 --epochs 500 --cuda --lr 0.0015  --gpu-rank 4,3,2,1, --exp-name save/enus/asr_gradient_reversal_0.1  --fp16 --hyper-rate 1.25  --beta 0.001 --gamma 0.000 --update-rule 0.1 --num-epochs 100  --patience 1000 --learning-anneal 0.99 --spec-augment && horovodrun -np 4 -H localhost:4 python gradient_reversal.py --train-manifest csvs/accent_cv/train/train7_sorted.csv --val-manifest csvs/accent_cv/dev/dev4_sorted.csv --batch-size 64  --num-workers 4 --epochs 500 --cuda --lr 0.0015  --gpu-rank 4,3,2,1, --exp-name save/enus/asr_gradient_reversal_0.1  --fp16 --hyper-rate 1.25  --beta 0.001 --gamma 0.000 --update-rule 0.1 --num-epochs 100  --patience 1000 --learning-anneal 0.99 --spec-augment"
-
-cmd = a.split('&&')
-
-import os
-for i in cmd:
-    os.system(i)
-
+m = 0
+a = 0.00001
+while True:
+    a*=1.1
+    m+=1
+    print(a,m)
+    if a > 0.1: break
+print(m)

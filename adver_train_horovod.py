@@ -167,7 +167,7 @@ if __name__ == '__main__':
     poor_cer_list = []
     eps = 0.0000000000001 # epsilon value
     start_iter = 0
-    
+    m_shit = False
     if args.continue_from:
         package = torch.load(args.continue_from, map_location=(f"cuda" if args.cuda else "cpu"))
         models = package['models']
@@ -214,7 +214,7 @@ if __name__ == '__main__':
         # print(best_cer, best_wer, audio_conf,start_iter)
         print("loaded models succesfully")
     else:
-        if hvd.rank() == 0: 
+        if True: #hvd.rank() == 0: 
             a = ""
             accent_list = sorted(accent, key=lambda x:accent[x])
             a += f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
@@ -421,8 +421,8 @@ if __name__ == '__main__':
                 
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
-        
-            loss = asr_loss # + discriminator_loss 
+            
+            loss = asr_loss # + (m * (1-m)).mean() * gamma
 
             scaler.scale(discriminator_loss).backward(retain_graph=True)
             for i_ in models.keys():
@@ -436,9 +436,8 @@ if __name__ == '__main__':
                 scaler.scale(loss).backward()
                 for i_ in models.keys():
                     models[i_][-1].synchronize()
-                    if i_ != 'discriminator':
-                        with models[i_][-1].skip_synchronize():
-                            scaler.step(models[i_][-1])
+                    with models[i_][-1].skip_synchronize():
+                        scaler.step(models[i_][-1])
                 scaler.update()
                 p_avg_loss += asr_loss.item()
                 p_d_avg_loss += p_d_loss
@@ -454,7 +453,7 @@ if __name__ == '__main__':
                 writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                 writer.add_scalar('Train/Discriminator-Avergae-Loss-Cur-Epoch', p_d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average Dummy Disctrimintaor loss uptil now in current epoch.
                 if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor Loss: {round(p_loss,4)} ({round(p_avg_loss/p_counter,4)})\t dummy_discriminator Loss: {round(p_d_loss,8)} ({round(p_d_avg_loss/p_counter,8)})") 
-        
+
         d_avg_loss /= p_counter
         p_avg_loss /= p_counter
         dummy_mask /= p_counter
@@ -470,23 +469,24 @@ if __name__ == '__main__':
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
         
         # anneal lr
-        dummy_lr = None
-        for i in models:
-            for g in models[i][-1].param_groups:
-                if dummy_lr is None: dummy_lr = g['lr']
-                if g['lr'] >= 1e-5:
-                    g['lr'] = g['lr'] * args.learning_anneal
-            print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
+        if len(poor_cer_list) > 10 and (poor_cer_list[-1] <= min(poor_cer_list[-6:-1])):
             dummy_lr = None
+            for i in models:
+                for g in models[i][-1].param_groups:
+                    if dummy_lr is None: dummy_lr = g['lr']
+                    if g['lr'] >= 1e-5:
+                        g['lr'] = g['lr'] * args.learning_anneal
+                print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
+                dummy_lr = None
         
         if not args.no_shuffle:
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
 
+        # Validation
+        with torch.no_grad():
+            wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001)
         if hvd.rank() == 0:
-            with torch.no_grad():
-                wer, cer, num, length,  weighted_precision, weighted_recall, weighted_f1, class_wise_precision, class_wise_recall, class_wise_f1, micro_accuracy = validation(test_loader, GreedyDecoder, models, args,accent,device,labels,eps=0.0000000001)
-            
             f"epoch,epoch_time,wer,cer,acc,precision,recall,f1,d_avg_loss,p_avg_loss\n"
             a += f"{epoch},{epoch_time},{wer},{cer},{num/length *100},{weighted_precision},{weighted_recall},{weighted_f1},{d_avg_loss},{p_avg_loss},{args.alpha},{args.beta},{args.gamma}\n"
 
@@ -534,21 +534,21 @@ if __name__ == '__main__':
                 torch.save(package, os.path.join(save_folder, f"ckpt_{epoch+1}.pth"))
                 del save
 
-            # Exiting criteria
-            terminate_train = False
-            if best_cer is None or best_cer > wer:
-                best_cer = wer
-                poor_cer_list = []
-            else:
-                poor_cer_list.append(wer)
-                if len(poor_cer_list) >= args.patience:
-                    print("Exiting training loop...")
-                    terminate_train = True
-            if terminate_train:
-                break
-
-            d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
-
+        # Exiting criteria
+        terminate_train = False
+        if best_cer is None or best_cer > wer:
+            best_cer = wer
+            poor_cer_list = []
+        else:
+            poor_cer_list.append(wer)
+            if len(poor_cer_list) >= args.patience:
+                print("Exiting training loop...")
+                terminate_train = True
+        if terminate_train:
+            break
+    
+        d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
+        
     writer.close()
 
 # if (i+1)%500 == 0 and i !=1:
