@@ -13,20 +13,20 @@ def prepare_info(layers):
 def configPre():
     layers = [
         # ['sub_blocks', 'kernel_size','stride','out_channels','dropout','dilation','batchnorm']
-        [1,11,2,256,0.2,1,True],
+        [1,33,2,256,0.2,1,True],
     ]
 
     return prepare_info(layers)
     
 def configE():
     layers = [
-        [5,11,1,256,0.2,1,True],
-        [5,11,1,384,0.2,1,True],
-        [5,11,1,512,0.2,1,True],
-        [5,11,1,640,0.3,1,True],
-        [5,11,1,768,0.3,1,True],
-        [1,29,1,896,0.4,2,True],
-        [1,1,1,1024,0.4,1,True],
+        [5,33,1,256,0.2,1,True],
+        [5,39,1,256,0.2,1,True],
+        [5,51,1,512,0.2,1,True],
+        [5,63,1,512,0.3,1,True],
+        [5,75,1,512,0.3,1,True],
+        [1,87,1,512,0.4,1,True],
+        [1,1,1,1024,0.4,2,True],
     ]
 
     return prepare_info(layers)
