@@ -6,6 +6,30 @@ from collections import OrderedDict
 import numpy as np
 from config.config_small import *
 
+class se(nn.Module):
+    def __init__(self,in_channels,dropout):
+        super(Forget, self).__init__()
+        
+        name = "squeeze"
+        scale = 8
+        self.layers = nn.Sequential(
+                        OrderedDict([
+                            (f'Linear_1{name}',nn.Linear(in_channels, int(in_channels/scale), bias=False)),
+                            (f'relu_{name}', nn.ReLU()),
+                            (f'dropout_{name}',nn.Dropout(p=dropout)),
+                            (f"Linear_2{name}",nn.Linear(int(in_channels/scale), in_channels, bias=False)),
+                            (f"Activation_2{name}",nn.Sigmoid()),
+                        ])
+                    )
+        
+    def forward(self, x, lengths):
+        old = x.shape[-1]
+        x = torch.mean(x,-1,keepdim=True).permute(0,2,1)
+        x = self.layers(x) #/6
+        x = x.permute(0,2,1).tile(1,1,old)
+        return x, lengths
+
+
 class block_B(nn.Module):
     def __init__(self, sub_blocks, kernel_size=11, dilation=1, stride=1, in_channels=32, out_channels=256, dropout=0.2,batch_norm=True,name='pre',groups=1):
         super(block_B, self).__init__()
@@ -20,7 +44,8 @@ class block_B(nn.Module):
             self.layers.append(
                 nn.Sequential(
                     OrderedDict([
-                    (f'conv_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=groups)),
+                    (f'conv_{name}',nn.Conv1d(in_channels, in_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=in_channels)),
+                    (f'point_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=1)),                    
                     ])
                 ) 
             )
@@ -28,7 +53,7 @@ class block_B(nn.Module):
                 self.layers.append(
                         nn.Sequential(
                             OrderedDict([
-                                (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
+                                (f'batchnorm_{name}', nn.BatchNorm1d(in_channels)),
                                 (f'relu_{name}', nn.ReLU()),
                                 (f'dropout_{name}', nn.Dropout(p=dropout)),
                             ])
@@ -40,8 +65,10 @@ class block_B(nn.Module):
                     self.layers.append(
                         nn.Sequential(
                             OrderedDict([
-                            (f'conv_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
-                            (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
+                            (f'conv_{name}',nn.Conv1d(in_channels, in_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=in_channels)),
+                            (f'point_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=1)),                    
+                            ]),
+                            (f'batchnorm_{name}', nn.BatchNorm1d(in_channels)),
                             (f'relu_{name}', nn.ReLU()),
                             (f'dropout_{name}',nn.Dropout(p=dropout)),
                             ])
@@ -51,7 +78,9 @@ class block_B(nn.Module):
                     self.layers.append(
                         nn.Sequential(
                             OrderedDict([
-                            (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
+                            (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=out_channels)),
+                            (f'point_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=1)),                    
+                            ]),
                             (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                             (f'relu_{name}', nn.ReLU()),
                             (f'dropout_{name}',nn.Dropout(p=dropout)),
@@ -62,14 +91,18 @@ class block_B(nn.Module):
             self.layers.append(
                 nn.Sequential(
                     OrderedDict([
-                    (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False)),
+                    (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=in_channels)),
+                    (f'point_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=1)),                    
+                    ]),
                     (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                     ])
                 )
             )
             self.conv = nn.Sequential(
                 OrderedDict([
-                    (f'conv_{name}', nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)),
+                    (f'conv_{name}',nn.Conv1d(in_channels, in_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=in_channels)),
+                    (f'point_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=1)),                    
+                    ]),
                     (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                 ])
                 ) 
@@ -78,7 +111,8 @@ class block_B(nn.Module):
                     (f'relu_{name}', nn.ReLU()),
                     (f'dropout_{name}', nn.Dropout(p=dropout)),
                 ])
-                )       
+                )
+            self.se = se(out_channels,dropout)       
             # if batch_norm:
             #     self.last = nn.Sequential(
             #     OrderedDict([
@@ -96,7 +130,9 @@ class block_B(nn.Module):
         for i in range(len(self.layers)):
             # x = self.layers[i](x)
             x = self.maskconv1d(self.layers[i](x), lengths)
+        
         if self.sub_blocks != 1: 
+            x = self.se(x)
             # x = self.last(x + initial)
             x = self.maskconv1d(self.last(x + initial), lengths)
         # exit()
