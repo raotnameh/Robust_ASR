@@ -422,7 +422,7 @@ if __name__ == '__main__':
                 asr_out = asr_out.transpose(0, 1)  # TxNxH
                 asr_loss = torch.mean(models['predictor'][1](asr_out.log_softmax(2).float(), targets, asr_out_sizes, target_sizes))  # average the loss by minibatch
             
-            loss = asr_loss # + (m * (1-m)).mean() * gamma
+            loss = asr_loss  - m.mean() #* gamma
 
             scaler.scale(discriminator_loss).backward(retain_graph=True)
             for i_ in models.keys():
@@ -469,15 +469,14 @@ if __name__ == '__main__':
               'D/P average Loss {2}, {3}\t'.format(epoch + 1, epoch_time, round(d_avg_loss,4),round(p_avg_loss,4)))
         
         # anneal lr
-        if len(poor_cer_list) > 10 and (poor_cer_list[-1] <= min(poor_cer_list[-6:-1])):
+        dummy_lr = None
+        for i in models:
+            for g in models[i][-1].param_groups:
+                if dummy_lr is None: dummy_lr = g['lr']
+                if g['lr'] >= 1e-5:
+                    g['lr'] = g['lr'] * args.learning_anneal
+            print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
             dummy_lr = None
-            for i in models:
-                for g in models[i][-1].param_groups:
-                    if dummy_lr is None: dummy_lr = g['lr']
-                    if g['lr'] >= 1e-5:
-                        g['lr'] = g['lr'] * args.learning_anneal
-                print(f"Learning rate of {i} annealed to: {g['lr']} from {dummy_lr}")
-                dummy_lr = None
         
         if not args.no_shuffle:
             print("Shuffling batches...")
