@@ -23,10 +23,12 @@ class se(nn.Module):
                     )
         
     def forward(self, x, lengths):
+        # print("inp: ",x.shape)
         old = x.shape[-1]
         x = torch.mean(x,-1,keepdim=True).permute(0,2,1)
         x = self.layers(x) #/6
-        x = x.permute(0,2,1).tile(1,1,old)
+        x = x.permute(0,2,1).repeat(1,1,old)
+        # print("out: ",x.shape)
         return x, lengths
 
 
@@ -53,7 +55,7 @@ class block_B(nn.Module):
                 self.layers.append(
                         nn.Sequential(
                             OrderedDict([
-                                (f'batchnorm_{name}', nn.BatchNorm1d(in_channels)),
+                                (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                                 (f'relu_{name}', nn.ReLU()),
                                 (f'dropout_{name}', nn.Dropout(p=dropout)),
                             ])
@@ -67,7 +69,7 @@ class block_B(nn.Module):
                             OrderedDict([
                             (f'conv_{name}',nn.Conv1d(in_channels, in_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=in_channels)),
                             (f'point_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=1)),                    
-                            (f'batchnorm_{name}', nn.BatchNorm1d(in_channels)),
+                            (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                             (f'relu_{name}', nn.ReLU()),
                             (f'dropout_{name}',nn.Dropout(p=dropout)),
                             ])
@@ -128,7 +130,7 @@ class block_B(nn.Module):
             x = self.maskconv1d(self.layers[i](x), lengths)
         
         if self.sub_blocks != 1: 
-            x = self.se(x)
+            x,lengths = self.se(x,lengths)
             # x = self.last(x + initial)
             x = self.maskconv1d(self.last(x + initial), lengths)
         # exit()
