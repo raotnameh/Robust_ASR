@@ -8,7 +8,7 @@ from config.config_small import *
 
 class se(nn.Module):
     def __init__(self,in_channels,dropout):
-        super(Forget, self).__init__()
+        super(se, self).__init__()
         
         name = "squeeze"
         scale = 8
@@ -89,7 +89,7 @@ class block_B(nn.Module):
             self.layers.append(
                 nn.Sequential(
                     OrderedDict([
-                    (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=in_channels)),
+                    (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=out_channels)),
                     (f'point_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=1)),
                     (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                     ])
