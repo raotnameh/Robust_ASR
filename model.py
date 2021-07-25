@@ -67,7 +67,6 @@ class block_B(nn.Module):
                             OrderedDict([
                             (f'conv_{name}',nn.Conv1d(in_channels, in_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=in_channels)),
                             (f'point_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=1)),                    
-                            ]),
                             (f'batchnorm_{name}', nn.BatchNorm1d(in_channels)),
                             (f'relu_{name}', nn.ReLU()),
                             (f'dropout_{name}',nn.Dropout(p=dropout)),
@@ -79,8 +78,7 @@ class block_B(nn.Module):
                         nn.Sequential(
                             OrderedDict([
                             (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=out_channels)),
-                            (f'point_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=1)),                    
-                            ]),
+                            (f'point_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=1)),
                             (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                             (f'relu_{name}', nn.ReLU()),
                             (f'dropout_{name}',nn.Dropout(p=dropout)),
@@ -92,8 +90,7 @@ class block_B(nn.Module):
                 nn.Sequential(
                     OrderedDict([
                     (f'conv_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=in_channels)),
-                    (f'point_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=1)),                    
-                    ]),
+                    (f'point_{name}',nn.Conv1d(out_channels, out_channels, kernel_size=1)),
                     (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                     ])
                 )
@@ -102,7 +99,6 @@ class block_B(nn.Module):
                 OrderedDict([
                     (f'conv_{name}',nn.Conv1d(in_channels, in_channels, kernel_size=self.kernel_size, stride=stride, padding=self.padding, dilation=dilation, bias=False,groups=in_channels)),
                     (f'point_{name}',nn.Conv1d(in_channels, out_channels, kernel_size=1)),                    
-                    ]),
                     (f'batchnorm_{name}', nn.BatchNorm1d(out_channels)),
                 ])
                 ) 
