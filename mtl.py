@@ -68,7 +68,7 @@ parser.add_argument('--use-decoder', action='store_true', help='To use decoder o
 parser.add_argument('--test-disc', dest='test_disc', action='store_true',
                     help='Test the discriminator from checkpoint ')
 # Model arguements
-parser.add_argument('--update-rule', default=2, type=int,
+parser.add_argument('--update-rule', default=2, type=float,
                     help='train the discriminator k times')
 parser.add_argument('--train-asr', action='store_true',
                     help='training only the ASR')
@@ -119,12 +119,13 @@ if __name__ == '__main__':
     # Lr scaler for multi gpu training
     lr_scaler = hvd.size()
     args.lr = args.lr * lr_scaler
-    if args.lr > 0.025: args.lr = 0.025
+    if args.lr > 0.0025: args.lr = 0.0025
+
     # Set seeds for determinism
-    # torch.manual_seed(args.seed)
-    # if args.cuda: torch.cuda.manual_seed_all(args.seed)
-    # np.random.seed(args.seed)
-    # random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if args.cuda: torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
 
     # Gpu setting
     device = torch.device("cuda" if args.cuda else "cpu")
@@ -160,8 +161,8 @@ if __name__ == '__main__':
         audio_conf['noise_levels'] = (args.noise_min, args.noise_max)
     
         if not args.train_asr: # if adversarial training.
-            assert 'discriminator'  in models.keys(), "discriminator not found in checkpoint loaded"
-        else:
+            assert 'discriminator' in models.keys(), "discriminator not found in checkpoint loaded"
+        else: 
             try: 
                 print("Deleting the forget_net and discriminator")
                 del models['forget_net']
@@ -310,8 +311,9 @@ if __name__ == '__main__':
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
         if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 0.1: beta = beta * args.hyper_rate
-        if gamma <= 1.0: gamma = gamma * args.hyper_rate
+        if beta <= args.update_rule: beta = beta * args.hyper_rate
+        # else: beta = args.beta
+        if gamma <= args.update_rule: gamma = gamma * args.hyper_rate
               
         if hvd.rank() == 0 : print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
@@ -503,9 +505,6 @@ if __name__ == '__main__':
 #                                 'Average WER {wer:.3f}\t'
 #                                 'Average CER {cer:.3f}\t'.format(epoch + 1, wer=wer, cer=cer))
 #                 [h_[0].train() for h_ in models.values()] # putting all the models in training state
-
-
-
 
 
 

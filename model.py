@@ -264,6 +264,7 @@ class Forget(nn.Module):
                             (f"Linear_2{name}",nn.Linear(int(in_channels/scale), in_channels, bias=False)),
                             # (f"Activation_2{name}",nn.ReLU6()), 
                             (f"Activation_2{name}",nn.Sigmoid()),
+                            # (f'dropout2_{name}',nn.Dropout(p=0.1)),
                         ])
                     )
         
