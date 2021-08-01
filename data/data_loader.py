@@ -16,6 +16,9 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from .spec_augment import spec_augment
 import pandas as pd
+from tqdm.auto import tqdm
+import subprocess
+from concurrent.futures import ProcessPoolExecutor
 
 windows = {'hamming': scipy.signal.hamming, 'hann': scipy.signal.hann, 'blackman': scipy.signal.blackman,
            'bartlett': scipy.signal.bartlett}
@@ -23,6 +26,17 @@ accent = None
 #accent = {'EN':0, 'US':1, 'CA':2, 'AU':3, 'WE':4, 'IR':5, 'SC':6}
 #accent = {'US':0, 'ENGLAND':1, 'CANADA':2, 'AUSTRALIA':3, 'INDIAN':4}
 #accent = {'EN':0, 'US':1}
+
+
+def get_length(path):
+    sample_rate, sound = read(path[0])
+    return sound.shape[0]/ sample_rate 
+
+def run(get_length, wav):
+    with ProcessPoolExecutor(max_workers=4) as executor:
+        results = list(tqdm((executor.map(get_length, wav)), total=len(wav)))
+    return results
+
 
 def load_audio(path):
     sample_rate, sound = read(path)
@@ -168,7 +182,7 @@ class SpectrogramParser(AudioParser):
 
 
 class SpectrogramDataset(Dataset, SpectrogramParser):
-    def __init__(self, audio_conf, manifest_filepath, labels, use_noise=True, accent=None,normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
+    def __init__(self, audio_conf, manifest_filepath, labels, max_duration=30.0, min_duration=0.5, use_noise=True, accent=None,normalize=False, speed_volume_perturb=False, spec_augment=False,audio_recreation=False,metadata_reacreation_path=""):
         """
         Dataset that loads tensors via a csv containing file paths to audio files and transcripts separated by
         a comma. Each new line is a different sample. Example below:
@@ -188,6 +202,13 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         with open(manifest_filepath) as f:
             ids = f.readlines()
         ids = [x.strip().split(',') for x in ids]
+
+        files_ = len(ids)
+        if False:#spec_augment:
+            temp = run(get_length, ids)
+            ids = [i for r, i in enumerate(ids) if temp[r] <= max_duration and temp[r] >= min_duration]
+            ids = sorted(ids, key = lambda x: x[-1])
+            print(f"Percentage of files remaining: {len(ids)/files_}")
         self.ids = ids
         if (accent==None):
             self.accent = get_accents(manifest_filepath)

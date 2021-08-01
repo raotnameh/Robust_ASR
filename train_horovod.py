@@ -270,7 +270,6 @@ if __name__ == '__main__':
             for i in models.items():
                 print(f"Number of parameters for {i[0]} in Million is: {get_param_size(i[1][0])/1000000}") 
             print(f"Total number of parameter is: {sum([get_param_size(i[1][0])/1000000 for i in models.items()])}")
-            print(f"Initial learning rate: {print(models['encoder'][-1].param_groups[0]['lr'])}")
     
     #Creating the dataset
     train_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.train_manifest, labels=labels,
@@ -321,6 +320,13 @@ if __name__ == '__main__':
         print("Finetuning discriminator")
         finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder)
         exit()
+    
+    for i in models:
+        for g in models[i][-1].param_groups:
+            g['lr'] = 0.0001
+    print(f"Learning rate is {models['predictor'][-1].param_groups[0]['lr']}")  
+    warm_res = True
+    lower = 1e-3
 
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
@@ -335,7 +341,7 @@ if __name__ == '__main__':
             if i == len(train_sampler):
                 break
             if args.dummy and i%2 == 1: break
-
+            # break
             # Data loading
             inputs, targets, input_percentages, target_sizes, accents = data
             input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
@@ -628,11 +634,17 @@ if __name__ == '__main__':
         d_avg_loss, p_avg_loss, p_d_avg_loss, p_d_avg_loss = 0, 0, 0, 0
 
         # anneal lr
-        if (len(poor_cer_list) >= 10 and (poor_cer_list[-1] >= poor_cer_list[-3])) or ((epoch+1) % 25 == 0):
-            for i in models:
-                for g in models[i][-1].param_groups:
-                    if g['lr'] >= 1e-4:
+        for i in models:
+            for g in models[i][-1].param_groups:
+                if g['lr'] <= args.lr and warm_res: g['lr'] = g['lr'] * (4/args.learning_anneal)
+                else:
+                    warm_res = False
+                    if g['lr'] >= lower:
                         g['lr'] = g['lr'] * args.learning_anneal
+                    else: 
+                        if args.lr > 1e-4: args.lr /= 2
+                        if lower > 1e-5: lower /= 10
+                        warm_res = True
             
         if not args.no_shuffle:
             if hvd.rank() == 0: print("Shuffling batches...")
@@ -640,6 +652,6 @@ if __name__ == '__main__':
 
         if hvd.rank() == 0:
             writer.add_scalar('Train/learning-rate', models['predictor'][-1].param_groups[0]['lr'], epoch+1) 
-            print(f"Learning rate is {models['predictor'][-1].param_groups[0]['lr']}")  
+        print(f"Learning rate is {models['predictor'][-1].param_groups[0]['lr']}")  
         
     writer.close()
