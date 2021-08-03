@@ -326,15 +326,15 @@ if __name__ == '__main__':
             g['lr'] = 0.0001
     print(f"Learning rate is {models['predictor'][-1].param_groups[0]['lr']}")  
     warm_res = True
-    lower = 1e-3
+    lower = 1e-4
 
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()
         p_counter, d_counter = eps, eps
-        if alpha <= 1.0: alpha = alpha * args.hyper_rate
-        if beta <= 0.1: beta = beta * args.hyper_rate
-        if gamma <= 1.0: gamma = gamma * args.hyper_rate
+        if alpha <= 0.1: alpha = alpha * args.hyper_rate
+        if beta <= 0.10: beta = beta * args.hyper_rate
+        if gamma <= 0.10: gamma = gamma * args.hyper_rate
               
         if hvd.rank() == 0 : print(alpha,beta,gamma)
         for i, (data) in enumerate(train_loader, start=start_iter):
@@ -423,9 +423,9 @@ if __name__ == '__main__':
                     writer.add_scalar('Train/Predictor-Avergae-Loss-Cur-Epoch', p_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                     writer.add_scalar('Train/Decodder-Avergae-Loss-Cur-Epoch', d_avg_loss/p_counter, len(train_sampler)*epoch+i+1) # Average predictor-loss uptil now in current epoch.
                     if not args.silent: print(f"Epoch: [{epoch+1}][{i+1}/{len(train_sampler)}]\t predictor/decoder Loss: {round(p_loss,4)}/{round(d_loss,4)} ({round(p_avg_loss/p_counter,4)}/{round(d_avg_loss/p_counter,4)})") 
-                # if i > 1: break
+    
                 continue
-            
+                # break
             if args.num_epochs > epoch: update_rule = 1
             else: update_rule = args.update_rule
             for k in range(int(update_rule)): #updating the discriminator only  
@@ -636,14 +636,14 @@ if __name__ == '__main__':
         # anneal lr
         for i in models:
             for g in models[i][-1].param_groups:
-                if g['lr'] <= args.lr and warm_res: g['lr'] = g['lr'] * (4/args.learning_anneal)
+                if g['lr'] <= args.lr and warm_res: g['lr'] = g['lr'] * (1.25/args.learning_anneal)
                 else:
                     warm_res = False
                     if g['lr'] >= lower:
                         g['lr'] = g['lr'] * args.learning_anneal
                     else: 
-                        if args.lr > 1e-4: args.lr /= 2
-                        if lower > 1e-5: lower /= 10
+                        if args.lr > 1e-5: args.lr /= 10
+                        if lower > 1e-5: lower /= 2
                         warm_res = True
             
         if not args.no_shuffle:

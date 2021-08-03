@@ -340,6 +340,10 @@ if __name__ == '__main__':
         finetune_disc(models,disc_train_loader,device,args,scaler,disc_train_sampler,writer,test_loader, GreedyDecoder,accent,labels,save_folder)
         exit()
 
+    # for i in models:
+    #     for g in models[i][-1].param_groups:
+    #         g['lr'] = g['lr'] * args.learning_anneal
+
     for epoch in range(start_epoch, args.epochs):
         [i[0].train() for i in models.values()] # putting all the models in training state
         start_epoch_time = time.time()

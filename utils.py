@@ -146,6 +146,7 @@ def validation(test_loader,GreedyDecoder, models, args,accent,device,labels,fine
                     num = num + 1
                 conf_mat[accents[j], predicted[j].item()] += 1
             length = length + len(accents)
+
     
     # add comment janvijay
     tps, fps, tns, fns = np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps, np.ones((len(accent)))*eps # class-wise TP, FP, TN, FN
