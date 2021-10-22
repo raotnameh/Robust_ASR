@@ -8,31 +8,40 @@ from tqdm import tqdm
 import argparse
 
 parser = argparse.ArgumentParser(description='Create Respective CSVs with given labels.')
-parser.add_argument('--src-path',help = 'path to cv corpus en folder')
-parser.add_argument('--csv-path',help = 'path to final csv to be created')
+parser.add_argument('--src-dir',help = 'path to cv corpus lang folder')
+#parser.add_argument('--csv-dir',help = 'path to final csv directory')
 parser.add_argument('--label',help='label to create csv for')
 
 args = parser.parse_args()
-src = args.src_path
-dst = args.csv_path
+src = args.src_dir
+if src[-1]!="/":
+    src += "/"
+dst = src + "csvs/"
+if not os.path.exists(dst):
+    os.makedirs(dst)
 label = args.label
 
-lst = ['dev.tsv']
+
+print(f"\n[CSV CREATION] \t Creating csvs in directory: {dst}\n")
+lst = ['dev.tsv','train.tsv',"test.tsv",'invalidated.tsv','validated.tsv','other.tsv']
 #lst = ['invalidated.tsv','validated.tsv','other.tsv','train.tsv']
 #lst = ["test.tsv"]
 l = []
-for i in lst:
-    df = pd.read_csv(src+i,'\t')
+for j in lst:
+    df = pd.read_csv(src+j,'\t')
     df1 = df[~df[label].isnull()]
     prePath = src
-    print(i)
+    print(j)
     for i in tqdm(range(len(df1))):
         x = df1.iloc[i]
         wav = prePath+'wav/'+x['path'][:-3]+'wav' 
         txt = prePath+'txt/'+x['path'][:-3]+'txt'
-        age = x['age']
-        l.append([wav,txt,age])
+        if label:
+            a = x[label]
+            l.append([wav,txt,a])
+        else:
+            l.append([wav,txt])
 
-finDf = pd.DataFrame(l)
-finDf.drop_duplicates(inplace=True)
-finDf.to_csv(dst,index= False, header = False)
+    finDf = pd.DataFrame(l)
+    finDf.drop_duplicates(inplace=True)
+    finDf.to_csv(dst+j[:-3]+"csv",index= False, header = False)

@@ -2,7 +2,7 @@ import xml.etree.ElementTree as ET
 import os
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ProcessPoolExecutor
-from pydub import AudioSegment
+#from pydub import AudioSegment
 from tqdm import tqdm
 tqdm.pandas()
 import sox
@@ -13,12 +13,19 @@ import os
 import argparse
 
 parser = argparse.ArgumentParser(description='Normalize WAV files.')
-parser.add_argument('--source-path',help = 'path to source directory which contains mp3 files')
-parser.add_argument('--dest-path',help = 'path to destination directory which will contain final wav files')
+parser.add_argument('--src-dir',help = 'path to cv language directory')
+#parser.add_argument('--dest-path',help = 'path to destination directory which will contain final wav files')
 
 args = parser.parse_args()
-src = args.source_path
-dst = args.dest_path
+src = args.src_dir
+if src[-1] != "/":
+    src += "/"
+
+dst = src +"wav/"
+if not os.path.exists(dst):
+    os.makedirs(dst)
+src = src +"clips/"
+#dst = args.dest_path
 
 def correctPaths(x):
     x = x.split('/')
@@ -57,6 +64,8 @@ def checkAudio(wavFile):
 
 if __name__ == '__main__':
     #print(src,dst)
+    print(f"\n[WAV FILE CREATION] \t Creating wav files in directory: {dst}\n")
+
     songs = os.listdir(src)
     with ProcessPoolExecutor(max_workers=24) as executor:
         list(tqdm((executor.map(normaliseWAV, songs)), total=len(songs)))
