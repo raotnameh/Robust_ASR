@@ -10,7 +10,11 @@ For ease of usage, a bash file has been created which can be run to quickly modi
 
 ## Running bash script
 
-`./run.sh [Path to CV Corpus Language Directory] [Path to labels.json file which contains the relevant labels for training] [label used for discriminator classification. for eg: "age", "gender", "accent". (can also be left out if no discriminator training is required)]`
+`bash run.sh [Path to CV Corpus Language Directory] [Path to labels.json file which contains the relevant labels for training] [label used for discriminator classification. for eg: "age", "gender", "accent". (can also be left out if no discriminator training is required)]`
+
+Example run: 
+
+`bash run.sh /media/nas_mount/hemant/rachit/cv-corpus-6.1-2020-12-11/punjabi/ /media/data_dump/hemant/rachit/Robust_ASR/labels.json gender`
 
 The above command can be used to run the bash script which would create all the relevant data in common voice language directory. It will create wav/, txt/, csvs/ directories in the common voice language directory where all the data to be used for training would be kept.
 
