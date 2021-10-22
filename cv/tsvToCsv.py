@@ -10,7 +10,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Create Respective CSVs with given labels.')
 parser.add_argument('--src-dir',help = 'path to cv corpus lang folder')
 #parser.add_argument('--csv-dir',help = 'path to final csv directory')
-parser.add_argument('--label',help='label to create csv for')
+parser.add_argument('--label',help='label to create csv for', type=str ,default=None)
 
 args = parser.parse_args()
 src = args.src_dir
@@ -23,13 +23,17 @@ label = args.label
 
 
 print(f"\n[CSV CREATION] \t Creating csvs in directory: {dst}\n")
+
 lst = ['dev.tsv','train.tsv',"test.tsv",'invalidated.tsv','validated.tsv','other.tsv']
 #lst = ['invalidated.tsv','validated.tsv','other.tsv','train.tsv']
 #lst = ["test.tsv"]
 l = []
 for j in lst:
     df = pd.read_csv(src+j,'\t')
-    df1 = df[~df[label].isnull()]
+    if label:
+        df1 = df[~df[label].isnull()]
+    else:
+        df1 = df
     prePath = src
     print(j)
     for i in tqdm(range(len(df1))):
