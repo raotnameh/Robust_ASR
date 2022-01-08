@@ -19,8 +19,12 @@ num_workers = args.num_workers
 
 
 def get_length(input_video):
-    result = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', input_video.split(',')[0]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    return [input_video,float(result.stdout)]
+    result = os.popen(f"soxi -D {input_video.split(',')[0]}").read()
+    return [input_video,float(result.strip())]
+    
+#    result = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', input_video.split(',')[0]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+ #   return [input_video,float(result.stdout)]
+    #except: return [0.0]
 
 files = glob.glob(f)
 print(files)

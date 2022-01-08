@@ -1,69 +1,53 @@
-import os
+import glob
+from tqdm.auto import tqdm
+import argparse
 import subprocess
-from tempfile import NamedTemporaryFile
 
-import librosa
-import numpy as np
-from scipy.io.wavfile import read
+parser = argparse.ArgumentParser(description='Sortagrad')
+parser.add_argument('--input-csv',help = 'path to csv which contains wav files')
+parser.add_argument('--save-path',help = 'path to save the final sorted csv')
+parser.add_argument('--min-time', type=float, help='minimum time threshold for audio')
+parser.add_argument('--max-time', type=float, help='maximum time threshold for audio')
+parser.add_argument('--num-workers', type=int, help='number of workers')
 
-def load_audio(path):
-    sample_rate, sound = read(path)
-    sound = sound.astype('float32') / 32767  # normalize audio
-    if len(sound.shape) > 1:
-        if sound.shape[1] == 1:
-            sound = sound.squeeze()
-        else:
-            sound = sound.mean(axis=1)  # multiple channels, average
-    sound = 2*((sound - sound.min()) / (sound.max() - sound.min())) - 1
-    return sound
-
-def get_audio_length(path):
-    output = subprocess.check_output(['soxi -D \"%s\"' % path.strip()], shell=True)
-    return float(output)
+args = parser.parse_args()
+f = args.input_csv
+save_file = args.save_path
+min_duration = args.min_time
+max_duration = args.max_time
+num_workers = args.num_workers
 
 
-def audio_with_sox(path, sample_rate, start_time, end_time):
-    """
-    crop and resample the recording with sox and loads it.
-    """
-    with NamedTemporaryFile(suffix=".wav") as tar_file:
-        tar_filename = tar_file.name
-        sox_params = "sox \"{}\" -r {} -c 1 -b 16 -e si {} trim {} ={} >/dev/null 2>&1".format(path, sample_rate,
-                                                                                               tar_filename, start_time,
-                                                                                               end_time)
-        os.system(sox_params)
-        y = load_audio(tar_filename)
-        return y
+def get_length(input_video):
+    result = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', input_video.split(',')[0]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return [input_video,float(result.stdout)]
+    #except: return [0.0]
+
+files = glob.glob("/media/nas_mount/swati/downloaded-sq-22-dec-21/*.wav")
+
+def csv_(dummy):
+    dummy = [i for i in tqdm(dummy) if i[-1] <= max_duration and i[-1] >= min_duration]
+    dummy = sorted(dummy, key = lambda x: x[-1])
+    a = ''
+    for i in tqdm(dummy):
+        a+=i[0]
+    with open(save_file, "w") as f:
+        f.write(a)
 
 
-def augment_audio_with_sox(path, sample_rate, tempo, gain):
-    """
-    Changes tempo and gain of the recording with sox and loads it.
-    """
-    with NamedTemporaryFile(suffix=".wav") as augmented_file:
-        augmented_filename = augmented_file.name
-        sox_augment_params = ["tempo", "{:.3f}".format(tempo), "gain", "{:.3f}".format(gain)]
-        sox_params = "sox \"{}\" -r {} -c 1 -b 16 -e si {} {} >/dev/null 2>&1".format(path, sample_rate,
-                                                                                      augmented_filename,
-                                                                                      " ".join(sox_augment_params))
-        os.system(sox_params)
-        y = load_audio(augmented_filename)
-        return y
+import pandas, os
+from concurrent.futures import ProcessPoolExecutor
+for i in range(1):
+    file = "path"
+    def run(get_length, wav):
+            with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                results = list(tqdm((executor.map(get_length, wav)), total=len(wav)))
+            return results
+    print("starting the processes")
+    temp = run(get_length, files)
+    duration = [i[-1] for i in temp]
 
-def load_randomly_augmented_audio(path, sample_rate=16000, tempo_range=(0.8, 1.2),
-                                  gain_range=(-6, 8)):
-    """
-    Picks tempo and gain uniformly, applies it to the utterance by using sox utility.
-    Returns the augmented utterance.
-    """
-    low_tempo, high_tempo = tempo_range
-    tempo_value = np.random.uniform(low=low_tempo, high=high_tempo)
-    low_gain, high_gain = gain_range
-    #gain_value = np.random.uniform(low=low_gain, high=high_gain)
-    audio = augment_audio_with_sox(path=path, sample_rate=sample_rate,
-                                   tempo=tempo_value, gain=gain_value)
-    return audio
-
-from tqdm.auto import tqdm 
-for i in tqdm(range(10000)):
-    load_randomly_augmented_audio("/home/hemant/accent_data/train7/wav/sample-101535.wav", 16000)
+    print(f"{file} info: \nmin = {min(duration)} seconds\nmax = {max(duration)} seconds\ntotal = {round(sum(duration)/3600,3)} Hrs and {round(sum(duration)/60,3)} Mins")
+    print(f"percentage of files less than {max_duration} seconds and greater than {min_duration} seconds: , {len([i for i in duration if i <max_duration])/len(duration)}")
+    print(f"percentage of files less than {min_duration} seconds: , {len([i for i in duration if i <min_duration])/len(duration)}")
+    print(f"Number files removed from the csv are: {len([i for i in duration if i >max_duration]) + len([i for i in duration if i <min_duration]) }")
